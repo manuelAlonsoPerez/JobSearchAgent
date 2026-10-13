@@ -1,0 +1,126 @@
+# Workday employer registry for JobSearchAgent
+# The scraper POSTs to:
+#   {base_url}/wday/cxs/{tenant}/{site_id}/jobs
+# with the queries from searches.yaml. Location filtering is applied after
+# that, so a global board is still useful when it posts Spain or remote roles.
+#
+# Every entry below answered that API with a live job count.
+# Profiles: ServiceNow (CSA/CAD, ITSM, Flow Designer, integrations) and
+# full-stack (React, TypeScript, Python, Java, .NET), in Spain or remote.
+#
+# Not on this Workday API, so they stay on the job boards in sites.yaml:
+#   ServiceNow itself (careers.servicenow.com), EY, Capgemini, Sopra Steria,
+#   Indra/Minsait, Inetum. Accenture is listed here for discovery. Its URLs
+#   match the blocked pattern in sites.yaml, so auto-apply skips them.
+
+employers:
+
+  # ── Spain: banks, product, and industry software ────────────────────────
+
+  santander:
+    name: "Santander"
+    tenant: "santander"
+    site_id: "SantanderCareers"
+    base_url: "https://santander.wd3.myworkdayjobs.com"
+
+  bbva:
+    name: "BBVA"
+    tenant: "bbva"
+    site_id: "BBVA"
+    base_url: "https://bbva.wd3.myworkdayjobs.com"
+
+  amadeus:
+    name: "Amadeus"
+    tenant: "amadeus"
+    site_id: "jobs"
+    base_url: "https://amadeus.wd502.myworkdayjobs.com"
+
+  repsol:
+    name: "Repsol"
+    tenant: "repsol"
+    site_id: "Repsol"
+    base_url: "https://repsol.wd3.myworkdayjobs.com"
+
+  mango:
+    name: "Mango"
+    tenant: "mango"
+    site_id: "Mango_Work_Your_Passion"
+    base_url: "https://mango.wd3.myworkdayjobs.com"
+
+  airbus:
+    name: "Airbus"
+    tenant: "ag"
+    site_id: "airbus"
+    base_url: "https://ag.wd3.myworkdayjobs.com"
+
+  # ── ServiceNow partners ─────────────────────────────────────────────────
+  # Accenture careers URLs are blocked in sites.yaml. Discover the roles,
+  # then apply by hand.
+
+  accenture:
+    name: "Accenture"
+    tenant: "accenture"
+    site_id: "AccentureCareers"
+    base_url: "https://accenture.wd103.myworkdayjobs.com"
+
+  dxc:
+    name: "DXC Technology"
+    tenant: "dxctechnology"
+    site_id: "DXCJobs"
+    base_url: "https://dxctechnology.wd1.myworkdayjobs.com"
+
+  ntt:
+    name: "NTT"
+    tenant: "nttlimited"
+    site_id: "ntt_careers"
+    base_url: "https://nttlimited.wd3.myworkdayjobs.com"
+
+  pwc:
+    name: "PwC"
+    tenant: "pwc"
+    site_id: "Global_Experienced_Careers"
+    base_url: "https://pwc.wd3.myworkdayjobs.com"
+
+  # ── Product companies with Spain or EU-remote engineering ──────────────
+
+  adobe:
+    name: "Adobe"
+    tenant: "adobe"
+    site_id: "external_experienced"
+    base_url: "https://adobe.wd5.myworkdayjobs.com"
+
+  cisco:
+    name: "Cisco"
+    tenant: "cisco"
+    site_id: "Cisco_Careers"
+    base_url: "https://cisco.wd5.myworkdayjobs.com"
+
+  salesforce:
+    name: "Salesforce"
+    tenant: "salesforce"
+    site_id: "External_Career_Site"
+    base_url: "https://salesforce.wd12.myworkdayjobs.com"
+
+  workday:
+    name: "Workday"
+    tenant: "workday"
+    site_id: "Workday"
+    base_url: "https://workday.wd5.myworkdayjobs.com"
+
+  philips:
+    name: "Philips"
+    tenant: "philips"
+    site_id: "jobs-and-careers"
+    base_url: "https://philips.wd3.myworkdayjobs.com"
+
+  abb:
+    name: "ABB"
+    tenant: "abb"
+    site_id: "external_career_page"
+    base_url: "https://abb.wd3.myworkdayjobs.com"
+
+  zendesk:
+    name: "Zendesk"
+    tenant: "zendesk"
+    site_id: "zendesk"
+    base_url: "https://zendesk.wd1.myworkdayjobs.com"

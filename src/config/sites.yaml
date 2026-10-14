@@ -1,0 +1,269 @@
+# Direct career site registry for JobSearchAgent
+# A scraper fills {query_encoded} and {location_encoded} (both URL-encoded).
+#
+# Target profile (from the two CVs):
+#   ServiceNow developer — CSA, CAD, ITSM/CSM/FSM, Flow Designer,
+#   Integration Hub, JavaScript, REST, 3 years on the platform.
+#   Full-stack developer — React, TypeScript, Python, Node, FastAPI,
+#   Java, .NET, 8+ years. Also RAG / multi-agent work.
+# Markets: Spain (Madrid, Barcelona, Valencia, remote-from-Spain) and
+# remote roles open to the EU/EEA. He lives in Oslo, so he is EEA-eligible.
+# Many Spanish "100% remoto" ads still require residence in Spain. Keep
+# those, and let a later filter flag them.
+#
+# Query shape differs by site. Prefer single tokens when the URL has no
+# note otherwise: servicenow, fullstack, react, python, javascript, java.
+# InfoJobs matches multi-word queries better with hyphens (full-stack).
+
+# ── Manual-only ATS domains ──────────────────────────────────────────────
+# Jobs that route through these are flagged manual: the bot skips them.
+manual_ats:
+  - "ibegin.tcsapps.com"       # TCS iBegin — unsolvable CAPTCHA
+
+# ── Blocked sites — too problematic for automation ───────────────────────
+# Accenture is a large ServiceNow partner in Spain. Leave it blocked for
+# the bot and apply to those roles by hand.
+blocked:
+  sites:
+    - "glassdoor"
+    - "google"
+    - "accenture"
+    - "AccentureCareers"
+    - "Workopolis"
+  url_patterns:
+    - "%glassdoor%"
+    - "%google.com/about/careers%"
+    - "%google.jobs%"
+    - "%accenture%"
+    - "%workopolis.com/out%"
+
+# ── Blocked SSO domains — cannot authenticate through these ──────────────
+blocked_sso:
+  - "accounts.google.com"
+  - "login.microsoftonline.com"
+  - "okta.com"
+  - "auth0.com"
+  - "sso.cisco.com"
+
+# ── Base URLs for URL resolution ─────────────────────────────────────────
+# Used to resolve relative links scraped from a site. Null means the
+# scraper must already have absolute URLs.
+base_urls:
+  "InfoJobs": "https://www.infojobs.net"
+  "InfoJobs Remote": "https://www.infojobs.net"
+  "Tecnoempleo": "https://www.tecnoempleo.com"
+  "Tecnoempleo Remote": "https://www.tecnoempleo.com"
+  "Ticjob": "https://ticjob.es"
+  "JobFluent Madrid": "https://www.jobfluent.com"
+  "JobFluent Barcelona": "https://www.jobfluent.com"
+  "JobFluent Valencia": "https://www.jobfluent.com"
+  "JobFluent Remote": "https://www.jobfluent.com"
+  "Manfred": "https://www.getmanfred.com"
+  "Michael Page ServiceNow": "https://www.michaelpage.es"
+  "Michael Page Full Stack": "https://www.michaelpage.es"
+  "Michael Page React": "https://www.michaelpage.es"
+  "Michael Page Python": "https://www.michaelpage.es"
+  "Talent.com Spain": "https://es.talent.com"
+  "Indeed Spain": "https://es.indeed.com"
+  "LinkedIn Jobs": "https://www.linkedin.com"
+  "EuroTechJobs": "https://www.eurotechjobs.com"
+  "Landing.jobs": "https://landing.jobs"
+  "Welcome to the Jungle": "https://www.welcometothejungle.com"
+  "Get on Board": "https://www.getonbrd.com"
+  "RemoteOK": "https://remoteok.com"
+  "We Work Remotely Full Stack": "https://weworkremotely.com"
+  "We Work Remotely Front End": "https://weworkremotely.com"
+  "We Work Remotely Back End": "https://weworkremotely.com"
+  "Remotive Software": "https://remotive.com"
+  "Remotive Spain": "https://remotive.com"
+  "Himalayas": "https://himalayas.app"
+  "JustRemote": "https://justremote.co"
+  "Working Nomads": "https://www.workingnomads.com"
+  "Nodesk": "https://nodesk.co"
+  "Dynamite Jobs": "https://dynamitejobs.com"
+  "Arc.dev": "https://arc.dev"
+  "Jobgether": "https://jobgether.com"
+  "EU Remote Jobs": "https://euremotejobs.com"
+  "Startup.jobs": "https://startup.jobs"
+  "Hacker News Jobs": "https://news.ycombinator.com/"
+
+sites:
+  # ── Spain: searchable ──────────────────────────────────────────────────
+  # InfoJobs is the main Spanish board. Province ids are numeric, so
+  # location is applied later from the job text. teleworkingIds=2 is
+  # "Solo teletrabajo". Hyphenate spaces in the query (full-stack).
+  - name: "InfoJobs"
+    url: "https://www.infojobs.net/ofertas-trabajo?keyword={query_encoded}&sortBy=PUBLICATION_DATE"
+    type: search
+
+  - name: "InfoJobs Remote"
+    url: "https://www.infojobs.net/ofertas-trabajo?keyword={query_encoded}&teleworkingIds=2&sortBy=PUBLICATION_DATE"
+    type: search
+
+  # Tecnoempleo is the IT board. `te` is the keyword. `pr` is a province
+  # id (Madrid and Barcelona are not free text), so do not put
+  # {location_encoded} in `pr`. en_remoto=,1, is "100% En remoto".
+  # The same role often appears in both entries; dedupe on the job URL.
+  - name: "Tecnoempleo"
+    url: "https://www.tecnoempleo.com/ofertas-trabajo/?te={query_encoded}"
+    type: search
+
+  - name: "Tecnoempleo Remote"
+    url: "https://www.tecnoempleo.com/ofertas-trabajo/?te={query_encoded}&en_remoto=,1,"
+    type: search
+
+  # Ticjob is Spain-only IT. The keyword filter is client-side, so scrape
+  # the listing and match ServiceNow / React / Python / fullstack locally.
+  - name: "Ticjob"
+    url: "https://ticjob.es/esp/busqueda"
+    type: static
+
+  # JobFluent is Spanish/EU startup and tech jobs. City and remote are
+  # path segments, not a free-text location parameter.
+  - name: "JobFluent Madrid"
+    url: "https://www.jobfluent.com/es/empleos-madrid?q={query_encoded}"
+    type: search
+
+  - name: "JobFluent Barcelona"
+    url: "https://www.jobfluent.com/es/empleos-barcelona?q={query_encoded}"
+    type: search
+
+  - name: "JobFluent Valencia"
+    url: "https://www.jobfluent.com/es/empleos-valencia?q={query_encoded}"
+    type: search
+
+  - name: "JobFluent Remote"
+    url: "https://www.jobfluent.com/es/empleos-remoto?q={query_encoded}"
+    type: search
+
+  # Manfred lists Spanish tech roles with salary and remote percentage.
+  # Role and technology filters run in the browser; filter after scrape.
+  - name: "Manfred"
+    url: "https://www.getmanfred.com/ofertas-empleo"
+    type: static
+
+  # Michael Page Spain uses a slug, not a query string. These four cover
+  # the two CVs. A multi-word {query_encoded} value 404s in this path.
+  - name: "Michael Page ServiceNow"
+    url: "https://www.michaelpage.es/jobs/servicenow"
+    type: static
+
+  - name: "Michael Page Full Stack"
+    url: "https://www.michaelpage.es/jobs/fullstack"
+    type: static
+
+  - name: "Michael Page React"
+    url: "https://www.michaelpage.es/jobs/react"
+    type: static
+
+  - name: "Michael Page Python"
+    url: "https://www.michaelpage.es/jobs/python"
+    type: static
+
+  # Aggregators. Indeed rejects plain HTTP clients (403); use a browser.
+  # LinkedIn guest search also rate-limits. The public search URL is the
+  # one a browser agent should open. geo is whatever {location_encoded}
+  # resolves to: Spain, Madrid, Barcelona, Remote.
+  - name: "Talent.com Spain"
+    url: "https://es.talent.com/jobs?k={query_encoded}&l={location_encoded}"
+    type: search
+
+  - name: "Indeed Spain"
+    url: "https://es.indeed.com/jobs?q={query_encoded}&l={location_encoded}&fromage=14&sort=date"
+    type: search
+
+  - name: "LinkedIn Jobs"
+    url: "https://www.linkedin.com/jobs/search/?keywords={query_encoded}&location={location_encoded}&f_TPR=r604800&sortBy=DD"
+    type: search
+
+  # EuroTechJobs puts the keyword in the path. Use one token
+  # (servicenow, react, python, fullstack). /spain still returns EU roles;
+  # drop anything that requires a non-EEA work permit.
+  - name: "EuroTechJobs"
+    url: "https://www.eurotechjobs.com/job_search/keyword/{query_encoded}/spain"
+    type: search
+
+  # Landing.jobs covers Iberia and Southern Europe tech roles.
+  - name: "Landing.jobs"
+    url: "https://landing.jobs/jobs?search={query_encoded}"
+    type: search
+
+  # Welcome to the Jungle often answers bots with an empty 202.
+  # Use a real browser. aroundQuery accepts Spain, Madrid, Barcelona, Remote.
+  - name: "Welcome to the Jungle"
+    url: "https://www.welcometothejungle.com/es/jobs?query={query_encoded}&aroundQuery={location_encoded}"
+    type: search
+
+  # Get on Board is Spanish-language and mostly Latin America. Keep
+  # Spain and EU-remote rows; drop roles that require LATAM residence.
+  - name: "Get on Board"
+    url: "https://www.getonbrd.com/jobs/programming"
+    type: static
+
+  # ── Remote-first boards ────────────────────────────────────────────────
+  # Global remote developer listings. Filter to EU/EEA or worldwide, and
+  # to React, TypeScript, Python, Java, .NET, or ServiceNow.
+  - name: "RemoteOK"
+    url: "https://remoteok.com/remote-dev-jobs"
+    type: static
+
+  - name: "We Work Remotely Full Stack"
+    url: "https://weworkremotely.com/categories/remote-full-stack-programming-jobs"
+    type: static
+
+  - name: "We Work Remotely Front End"
+    url: "https://weworkremotely.com/categories/remote-front-end-programming-jobs"
+    type: static
+
+  - name: "We Work Remotely Back End"
+    url: "https://weworkremotely.com/categories/remote-back-end-programming-jobs"
+    type: static
+
+  - name: "Remotive Software"
+    url: "https://remotive.com/remote-jobs/software-development"
+    type: static
+
+  - name: "Remotive Spain"
+    url: "https://remotive.com/remote-jobs/l-spain"
+    type: static
+
+  - name: "Himalayas"
+    url: "https://himalayas.app/jobs/developer"
+    type: static
+
+  - name: "JustRemote"
+    url: "https://justremote.co/remote-developer-jobs"
+    type: static
+
+  - name: "Working Nomads"
+    url: "https://www.workingnomads.com/remote-development-jobs"
+    type: static
+
+  - name: "Nodesk"
+    url: "https://nodesk.co/remote-jobs/"
+    type: static
+
+  - name: "Dynamite Jobs"
+    url: "https://dynamitejobs.com/remote-development-jobs"
+    type: static
+
+  - name: "Arc.dev"
+    url: "https://arc.dev/remote-jobs"
+    type: static
+
+  - name: "Jobgether"
+    url: "https://jobgether.com/remote-jobs/software-engineer"
+    type: static
+
+  # EU-timezone remote roles. Plain HTTP is often blocked; use a browser.
+  - name: "EU Remote Jobs"
+    url: "https://euremotejobs.com/"
+    type: static
+
+  - name: "Startup.jobs"
+    url: "https://startup.jobs/?q={query_encoded}&remote=true"
+    type: search
+
+  - name: "Hacker News Jobs"
+    url: "https://news.ycombinator.com/jobs"
+    type: static

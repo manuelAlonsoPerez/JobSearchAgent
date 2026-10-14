@@ -1,0 +1,619 @@
+# Work profiles for Manuel Alonso, from the CVs in src/assets.
+# An agent scores one offer against shared, then against exactly one profile.
+# A skill that is not on that profile is not possessed.
+
+match_rules:
+  outcomes: [accept, reject, needs_confirmation]
+  steps:
+    - Select the one profile whose matching_titles best fits the offer title. Do not mix skills from two profiles.
+    - Compare each required skill to that profile's skills, case-insensitively, including aliases. A required skill with no record is missing.
+    - Reject when any required skill is missing, when the offer matches weak_fit or not_claimed, or when the skill's years are below the offer minimum.
+    - Use the skill's years and last_used, not the career total, when the offer names a technology.
+    - A skill with level older fails a requirement for current or senior depth in that skill.
+    - Return needs_confirmation when the offer requires a CEFR grade, a spoken-language grade such as "alto", a numeric English test score, residence in Spain, or a fixed hybrid schedule. A passed TOEFL iBT that met the University of Oslo master's requirement satisfies a plain English requirement. The score is not remembered, so do not treat it as B2, C1, or any number.
+    - Accept only when every required skill matches and no constraint asks for confirmation.
+
+shared:
+  candidate:
+    name: Manuel Alonso
+    based_in: Oslo, Norway
+    phone: "+47 451 00 934"
+  languages:
+    - name: Spanish
+      cefr: native
+      spoken: native
+    - name: English
+      cv_wording: fluent
+      exam: TOEFL iBT
+      exam_passed: true
+      score: not remembered
+      requirement_met: University of Oslo master's English proficiency
+      requirement_url: https://www.uio.no/english/studies/admission/master/english-proficiency-master.html
+      evidence: >
+        Passed TOEFL iBT and met the University of Oslo English proficiency
+        requirement for master's programmes taught in English. The score is
+        not remembered. That page sets a total of 90 for programmes other than
+        English studies, with at least 19 in reading, 20 in listening, 20 in
+        speaking and 24 in writing. English Language and Linguistics, English
+        Literature, and American and British Studies require a total of 108.
+        Which cutoff was met is not stated. Do not store a score and do not
+        treat this pass as B2 or C1.
+      cefr: unknown
+      spoken: unknown
+    - name: Norwegian
+      cv_wording: fluent
+      evidence: Norskprøve III
+      cefr: unknown
+      spoken: unknown
+  work_constraints:
+    based_in: Oslo, Norway
+    spain_residence_stated: false
+    work_authorization_stated_on_cv: false
+    will_consider:
+      countries: [Spain]
+      arrangements: [on-site, hybrid, remote]
+      remote_from_norway: true
+      spain_locations: any city in Spain
+      already_considered:
+        - Pontevedra
+        - Madrid
+        - Getafe
+        - Sevilla
+        - Málaga
+        - Algete
+  education:
+    - school: University of Oslo
+      credential: Bachelor in Mathematics and Informatics
+      years: 2014-2017
+      completed: true
+    - school: Universidad Autónoma de Madrid
+      credential: MSc in Mathematics
+      years: 2000-2005
+      completed: false
+      notes: 162 of 300 ECTS. Do not describe this as a finished master's degree.
+
+work_profiles:
+
+  frontend-developer:
+    id: frontend-developer
+    title: Frontend Developer
+    email: manuelalonsoper@gmail.com
+    source_cvs:
+      - Manuel Alonso - Full stack Developer (EN).pdf
+      - Manuel Alonso - Full stack developer.pdf
+      - Manuel Alonso - Fullstack Utvikler.pdf
+    summary: >
+      Frontend developer. React interfaces from 2018-2021 and again from 2025,
+      plus the current TypeScript SaaS and documentation UI. Career length is
+      8+ years. Hands-on React is about 5 years, with 2022-2024 spent on ServiceNow.
+    years_relevant: 8
+    years_in_core_skill:
+      skill: React
+      years: 5
+    skills:
+      - name: React
+        aliases: [React.js, ReactJS]
+        level: production
+        years: 5
+        last_used: 2026
+        evidence: Diggit 2018, Posten Signering 2019-2021, Nexdev 2025-present
+      - name: TypeScript
+        level: production
+        years: 1
+        last_used: 2026
+        evidence: Nexdev interfaces and Pricing Wizard UI, 2025-present
+      - name: JavaScript
+        level: production
+        years: 5
+        last_used: 2026
+        evidence: Diggit, Posten Signering, and current UI work
+      - name: Redux
+        level: older
+        years: 4
+        last_used: 2021
+        evidence: Diggit 2018 and Posten Signering 2019-2021. Not listed on the 2025 work.
+      - name: HTML
+        level: production
+        years: 5
+        last_used: 2026
+      - name: CSS
+        level: production
+        years: 5
+        last_used: 2026
+      - name: Material UI
+        level: production
+        years: 1
+        last_used: 2026
+        evidence: Nexdev, 2025-present
+      - name: Tailwind CSS
+        level: production
+        years: 1
+        last_used: 2026
+        evidence: Pricing Wizard UI, 2025-present
+      - name: React Router
+        level: older
+        years: 1
+        last_used: 2018
+        evidence: Diggit e-learning platform
+      - name: REST
+        level: supporting
+        years: 5
+        last_used: 2026
+        evidence: Frontends integrated with REST APIs, including a .NET API at Diggit
+      - name: Playwright
+        level: production
+        years: 1
+        last_used: 2026
+        evidence: Nexdev, 2025-present
+      - name: Astro
+        level: production
+        years: 1
+        last_used: 2026
+      - name: Docusaurus
+        level: production
+        years: 1
+        last_used: 2026
+      - name: WordPress
+        level: supporting
+        years: 1
+        last_used: 2026
+        evidence: Consolidation of two Joomla sites into WordPress. Not custom theme engineering.
+      - name: Webflow
+        level: older
+        years: 1
+        last_used: 2018
+        evidence: Diggit modules and components
+      - name: Figma
+        level: supporting
+        years: 3
+        last_used: 2021
+      - name: Miro
+        level: supporting
+        years: 3
+        last_used: 2021
+    not_claimed:
+      - Go
+      - Angular
+      - Vue
+      - Svelte
+      - Next.js
+      - React Native
+      - GraphQL
+      - Jest
+      - Webpack
+      - Module Federation
+      - gRPC
+      - WebSockets
+    experience:
+      - period: 2025-present
+        title: Full-stack AI Developer
+        organization: Nexdev Consulting
+        client: Estudio Tributario Canarias
+        arrangement: freelance
+        relevant_work:
+          - Responsive interfaces in React, TypeScript, and Material UI
+          - Pricing Wizard UI in React, TypeScript, and Tailwind CSS
+          - Role-based admin and customer portals
+          - Documentation sites in Astro and Docusaurus
+          - Consolidation of two Joomla sites into one WordPress site
+          - Playwright tests
+      - period: 2019-2021
+        title: System Developer
+        organization: Posten Norway
+        product: Posten Signering
+        relevant_work:
+          - Signing frontend in JavaScript, React, and Redux
+          - Automated frontend tests
+          - Rewrites of outdated UI code
+          - Product workshops and interface work with Digdir
+          - Collaboration with design in Miro and Figma
+      - period: 2018
+        title: Frontend Developer
+        organization: Diggit Norge
+        relevant_work:
+          - E-learning platform with product and design
+          - Frontend in JavaScript, HTML, CSS, React, React Router, and Redux
+          - Modules and components in Webflow
+          - Integration with a .NET REST API
+    matching_titles:
+      - Frontend Developer
+      - Front-end Developer
+      - React Developer
+      - Desarrollador Frontend
+      - Desarrollador React
+    weak_fit:
+      - Native iOS or Android
+      - Design-only UI/UX roles
+      - Vue, Angular, or Svelte as the main framework
+      - A required backend language such as Go
+
+  fullstack-developer:
+    id: fullstack-developer
+    title: Full-stack Developer
+    email: manuelalonsoper@gmail.com
+    source_cvs:
+      - Manuel Alonso - Full stack developer.pdf
+      - Manuel Alonso - Full stack Developer (EN).pdf
+      - Manuel Alonso - Fullstack Utvikler.pdf
+    summary: >
+      Full-stack developer with 8+ years building web applications. Current
+      production stack is React, TypeScript, Python, FastAPI, Node.js, and
+      PostgreSQL. Java and .NET API work ended in 2021.
+    years_relevant: 8
+    skills:
+      - name: React
+        aliases: [React.js, ReactJS]
+        level: production
+        years: 5
+        last_used: 2026
+        evidence: Diggit 2018, Posten 2019-2021, Nexdev 2025-present
+      - name: TypeScript
+        level: production
+        years: 1
+        last_used: 2026
+        evidence: Nexdev, 2025-present
+      - name: JavaScript
+        level: production
+        years: 8
+        last_used: 2026
+      - name: Python
+        level: production
+        years: 2
+        last_used: 2026
+        evidence: Pepper conversation app at Sopra Steria, then Nexdev 2025-present. Not 8 years of Python.
+      - name: FastAPI
+        level: production
+        years: 1
+        last_used: 2026
+        evidence: Pricing Wizard SaaS, 2025-present
+      - name: Node.js
+        level: production
+        years: 1
+        last_used: 2026
+        evidence: Pricing Wizard SaaS, 2025-present
+      - name: Express.js
+        aliases: [Express]
+        level: production
+        years: 1
+        last_used: 2026
+        evidence: PostgreSQL API for pricing rules, 2025-present
+      - name: PostgreSQL
+        level: production
+        years: 1
+        last_used: 2026
+      - name: SQL
+        level: supporting
+        years: 1
+        last_used: 2026
+        evidence: PostgreSQL only. This is not a data-engineering or analytics stack.
+      - name: Supabase
+        level: production
+        years: 1
+        last_used: 2026
+        evidence: Authentication and role-based portals
+      - name: REST
+        aliases: [REST API, APIs]
+        level: production
+        years: 8
+        last_used: 2026
+      - name: Java
+        level: older
+        years: 3
+        last_used: 2021
+        evidence: Posten API extensions, 2019-2021
+      - name: .NET
+        aliases: [.NET REST]
+        level: older
+        years: 4
+        last_used: 2021
+        evidence: Diggit 2018 and Posten 2019-2021
+      - name: Docker
+        level: supporting
+        years: 1
+        last_used: 2026
+        evidence: Deployment tool at Nexdev, not a DevOps role
+      - name: Kubernetes
+        level: supporting
+        years: 1
+        last_used: 2026
+        evidence: Deployment tool at Nexdev, not a DevOps role
+      - name: GCP
+        aliases: [Google Cloud]
+        level: supporting
+        years: 1
+        last_used: 2026
+        evidence: Deployment at Nexdev, plus the GCP Fundamentals certificate
+      - name: Playwright
+        level: production
+        years: 1
+        last_used: 2026
+      - name: Redux
+        level: older
+        years: 4
+        last_used: 2021
+      - name: Material UI
+        level: production
+        years: 1
+        last_used: 2026
+      - name: Tailwind CSS
+        level: production
+        years: 1
+        last_used: 2026
+      - name: RAG
+        level: production
+        years: 1
+        last_used: 2026
+        evidence: Two-service platform with an orchestrator. See the ai-developer profile for the AI scope.
+      - name: Azure Cosmos DB
+        level: older
+        years: 3
+        last_used: 2021
+        evidence: Posten
+    not_claimed:
+      - Go
+      - Django
+      - Angular
+      - Spark
+      - Scala
+      - Databricks
+      - Iceberg
+      - Kafka
+      - PHP
+      - Ruby
+      - C++
+    certifications:
+      - Google Cloud Platform Fundamentals: Core Infrastructure
+    experience:
+      - period: 2025-present
+        title: Full-stack AI Developer
+        organization: Nexdev Consulting
+        client: Estudio Tributario Canarias
+        arrangement: freelance
+        relevant_work:
+          - Pricing Wizard SaaS with Python, Node.js, FastAPI, React, TypeScript, and Tailwind CSS
+          - Express.js and PostgreSQL API for pricing rules, scenarios, and integrations
+          - Supabase authentication and role-based portals
+          - Deployment and testing with Docker, Kubernetes, GCP, Railway, Netlify, and Playwright
+      - period: 2019-2021
+        title: System Developer
+        organization: Posten Norway
+        product: Posten Signering
+        relevant_work:
+          - React and Redux signing frontend
+          - Java and .NET backend work and API extensions
+          - Automated frontend and backend tests
+          - Azure Cosmos DB, Kibana, and Grafana
+      - period: 2018
+        title: Frontend Developer
+        organization: Diggit Norge
+        relevant_work:
+          - E-learning platform in React, Redux, and React Router
+          - Integration with a .NET REST API
+      - period: 2022-2024
+        title: Senior Software Engineer
+        organization: Sopra Steria Norway
+        relevant_work:
+          - JavaScript, REST integrations, and testing
+          - Python conversation app for a Pepper robot
+    matching_titles:
+      - Full Stack Developer
+      - Full-stack Developer
+      - Full Stack Engineer
+      - Desarrollador Fullstack
+      - Desarrollador Full Stack
+      - Programador Full Stack
+    weak_fit:
+      - Staff or principal engineer roles that require people management
+      - Senior Java or .NET as the main current skill
+      - Data engineering, Spark, Databricks, or analytics engineering
+      - DevOps or SRE as the main role
+      - Machine-learning research or model training
+
+  servicenow-developer:
+    id: servicenow-developer
+    title: ServiceNow Developer
+    email: nexdevconsulting@outlook.com
+    source_cvs:
+      - Manuel Alonso - ServiceNow Developer.pdf
+    summary: >
+      ServiceNow developer and consultant. Three years on the platform at
+      Sopra Steria, through 2024, with CSA and CAD. The rest of the career is
+      general software development and is not ServiceNow experience.
+    years_relevant: 3
+    years_software: 8
+    skills:
+      - name: ServiceNow
+        level: production
+        years: 3
+        last_used: 2024
+        evidence: Sopra Steria Norway, 2022-2024
+      - name: ITSM
+        level: production
+        years: 3
+        last_used: 2024
+      - name: CSM
+        level: production
+        years: 3
+        last_used: 2024
+      - name: FSM
+        level: production
+        years: 3
+        last_used: 2024
+      - name: Flow Designer
+        level: production
+        years: 3
+        last_used: 2024
+      - name: Integration Hub
+        level: production
+        years: 3
+        last_used: 2024
+      - name: JavaScript
+        level: production
+        years: 3
+        last_used: 2024
+        evidence: ServiceNow scripting at Sopra Steria
+      - name: REST
+        level: production
+        years: 3
+        last_used: 2024
+        evidence: Integrations between ServiceNow, Azure AD, and other systems
+      - name: Azure AD
+        aliases: [Entra ID]
+        level: supporting
+        years: 3
+        last_used: 2024
+        evidence: Integration counterpart, not an Azure AD administration role
+      - name: Service Portal
+        level: production
+        years: 3
+        last_used: 2024
+    not_claimed:
+      - ITOM
+      - Discovery
+      - CMDB
+      - ServiceNow architect
+      - HRSD
+      - SecOps
+    certifications:
+      - ServiceNow Certified System Administrator (CSA)
+      - ServiceNow Certified Application Developer (CAD)
+    experience:
+      - period: 2022-2024
+        title: Senior Software Engineer
+        organization: Sopra Steria Norway
+        relevant_work:
+          - Analysis of ITSM processes and integrations, then replacement solutions
+          - Tailored ServiceNow applications across ITSM, CSM, and FSM
+          - Automation with Flow Designer, Integration Hub, and JavaScript
+          - REST integrations between ServiceNow, Azure AD, and other systems
+          - Migration of legacy data into new ServiceNow applications
+          - Access controls and data protection
+          - Service Portal widgets and ServiceNow mobile applications
+          - Automated testing, technical documentation, demos, training, and support
+    matching_titles:
+      - ServiceNow Developer
+      - ServiceNow Consultant
+      - Desarrollador ServiceNow
+      - Consultor ServiceNow
+      - Programador ServiceNow
+    weak_fit:
+      - ServiceNow architect
+      - ITOM, Discovery, or CMDB specialist
+      - ServiceNow project manager or practice lead
+      - ITSM process owner with no build responsibility
+
+  ai-developer:
+    id: ai-developer
+    title: AI Developer
+    email: manuelalonsoper@gmail.com
+    source_cvs:
+      - Manuel Alonso - ServiceNow Developer.pdf
+      - Manuel Alonso - Full stack developer.pdf
+      - Manuel Alonso - Full stack Developer (EN).pdf
+      - Manuel Alonso - Fullstack Utvikler.pdf
+    summary: >
+      Applied AI developer. One year shipping a RAG platform with an
+      orchestrator and CrewAI agents, plus an earlier Python voice app using
+      ChatGPT and Google Speech Recognition. This does not include embeddings,
+      reranking, fine-tuning, or model training.
+    years_relevant: 1
+    years_software: 8
+    skills:
+      - name: Python
+        level: production
+        years: 2
+        last_used: 2026
+        evidence: Pepper app at Sopra Steria, then the RAG platform at Nexdev
+      - name: RAG
+        aliases: [retrieval-augmented generation]
+        level: production
+        years: 1
+        last_used: 2026
+        evidence: Two-service platform with an orchestrator and agents. Embeddings, chunking, and reranking are not described.
+      - name: CrewAI
+        aliases: [AI agents, agentic workflows]
+        level: production
+        years: 1
+        last_used: 2026
+        evidence: Agent layer of the RAG platform, including document analysis and legal-automation planning
+      - name: LLM APIs
+        aliases: [ChatGPT, OpenAI API, LLM]
+        level: production
+        years: 3
+        last_used: 2026
+        evidence: ChatGPT in the Pepper app, 2022-2024, and the 2025 RAG product
+      - name: Google Speech Recognition
+        level: supporting
+        years: 2
+        last_used: 2024
+        evidence: Pepper robot conversation app
+      - name: FastAPI
+        level: supporting
+        years: 1
+        last_used: 2026
+        evidence: Services around the pricing and RAG product
+      - name: React
+        level: supporting
+        years: 1
+        last_used: 2026
+        evidence: Interface for the agentic planning and pricing flow
+      - name: TypeScript
+        level: supporting
+        years: 1
+        last_used: 2026
+      - name: Docker
+        level: supporting
+        years: 1
+        last_used: 2026
+      - name: Kubernetes
+        level: supporting
+        years: 1
+        last_used: 2026
+      - name: GCP
+        aliases: [Google Cloud]
+        level: supporting
+        years: 1
+        last_used: 2026
+    not_claimed:
+      - embeddings
+      - chunking
+      - reranking
+      - vector databases
+      - fine-tuning
+      - model training
+      - MLOps
+      - Amazon Bedrock
+      - n8n
+      - Microsoft Copilot Studio
+      - Spark
+      - Databricks
+    experience:
+      - period: 2025-present
+        title: Full-stack AI Developer
+        organization: Nexdev Consulting
+        client: Estudio Tributario Canarias
+        arrangement: freelance
+        relevant_work:
+          - Two-service RAG platform with an orchestrator and CrewAI agents
+          - AI document analysis, rule extraction, and scenario summaries
+          - Agentic system with a planning and pricing interface for legal automations
+          - WordPress integration with the RAG agent system
+          - Deployment with Docker, Kubernetes, and GCP
+      - period: 2022-2024
+        title: Senior Software Engineer
+        organization: Sopra Steria Norway
+        relevant_work:
+          - Live conversation application for a Pepper robot in Python
+          - Integration with ChatGPT and Google Speech Recognition
+    matching_titles:
+      - AI Developer
+      - AI Engineer
+      - LLM Engineer
+      - RAG Engineer
+      - Desarrollador IA
+      - Desarrollador Python especializado en Inteligencia Artificial
+    weak_fit:
+      - Machine-learning researcher or data scientist
+      - Model training, fine-tuning, or MLOps as the main role
+      - Roles that require a completed advanced degree in machine learning
+      - RAG roles that require embeddings, chunking, or reranking as a must-have

@@ -14,7 +14,7 @@ __pycache__/
 .eggs/
 dist/
 build/
-/src/assets/
+src/assets/
 
 # Environment
 .env

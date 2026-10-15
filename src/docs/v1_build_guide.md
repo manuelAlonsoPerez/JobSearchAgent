@@ -129,7 +129,7 @@ DRY_RUN=true           # never actually submits while true
 
 # Phase 0 — Foundation
 
-### ☐ Part F1 — `config.py` · `CODE`
+### ☑ Part F1 — `config.py` · `CODE`
 - **Goal:** load `.env` + the existing `src/config/*.yaml` into typed accessors.
 - **Depends on:** —
 - **Provides:** `settings` (env), `load_sites()`, `load_searches()`,
@@ -163,7 +163,7 @@ DRY_RUN=true           # never actually submits while true
   `linkedin_search_url("ServiceNow developer", "Spain")` returns the encoded LinkedIn URL with
   recent-first and Easy Apply filters.
 
-### ☐ Part F2 — `models.py` · `CODE`
+### ☑ Part F2 — `models.py` · `CODE`
 - **Goal:** the shared `JobState` + nested models (the agreed schema).
 - **Depends on:** —
 - **Provides:** `JobState` (TypedDict w/ reducers), `Form`, `FormField`, `FieldAnswer`, `Artifact`, enums.

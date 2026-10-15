@@ -69,8 +69,8 @@ needed.
 
 ## 5. Ollama
 
-Ollama is a local application rather than a Python dependency. Install it from
-[ollama.com/download](https://ollama.com/download), start it, and pull the configured models:
+Ollama is a local application rather than a Python dependency. Install version `0.40.4` or newer
+from [ollama.com/download](https://ollama.com/download), start it, and pull the configured models:
 
 ```bash
 ollama pull nimble
@@ -94,3 +94,27 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
 The F1/F2 configuration and model tests should pass before starting F3.
+
+## 7. Run the interactive LinkedIn scraper smoke test
+
+First ensure Ollama is running, `nimble` is installed, and the virtual environment is active:
+
+```bash
+ollama --version
+ollama pull nimble
+source .venv/bin/activate
+```
+
+From the repository root, run:
+
+```bash
+PYTHONPATH=src python -m jobsearchagent.discovery.linkedin_smoke
+```
+
+The command opens the persistent Chromium profile. Complete LinkedIn login manually when requested,
+then return to the terminal and press Enter. The test searches for remote ServiceNow Easy Apply jobs
+in Spain, prints JEV's typed profile/outcome/fit result for each job, and asks whether to analyze the
+next result.
+
+This smoke test does **not** submit applications. LinkedIn credentials are entered only in the
+browser and are not stored in `.env` or read by the script.

@@ -1,0 +1,14 @@
+# Foundation (F1-F3)
+pydantic>=2.10,<3
+python-dotenv>=1.0,<2
+PyYAML>=6.0,<7
+
+# LangGraph orchestration and SQLite checkpoint persistence
+langgraph>=1.0,<2
+langgraph-checkpoint-sqlite>=2.0,<4
+
+# Local Ollama HTTP clients (F4a/F4b)
+httpx>=0.27,<1
+
+# LinkedIn discovery and Easy Apply browser automation (F4c/A1/A6/A7)
+playwright>=1.50,<2

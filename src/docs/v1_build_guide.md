@@ -210,7 +210,7 @@ DRY_RUN=true           # never actually submits while true
 - **Provides:** `Jev.ask(state, questions)`, `.choice()`, `.noul()`, `.score()`.
 - **Done when:** a live `ask` against `nimble` returns parsed answers (verify field names once).
 
-### ☐ Part F4b — `llm.py` · `GEN`
+### ☑ Part F4b — `llm.py` · `GEN`
 - **Goal:** generative Ollama client for writers/apply reasoning.
 - **Provides:** `chat(messages, model=None, format=None) -> str` (hits `/api/chat`); honors `WRITER_MODEL`/`APPLY_MODEL`.
 - **Done when:** a prompt returns text from `qwen2.5:7b`; supports a JSON-format call.
@@ -223,7 +223,7 @@ DRY_RUN=true           # never actually submits while true
 - **Done when:** opens LinkedIn already logged in after a manual first login, reads a jobs search
   page, and `page_to_form` extracts fields from one Easy Apply modal step.
 
-### ☐ Part F5 — `utils/` · `CODE`
+### ☑ Part F5 — `utils/` · `CODE`
 - **Goal:** shared, **pure** helpers reused across nodes — side-effect-free and unit-testable.
 - **Depends on:** F1, F2.
 - **Modules & consumers:**

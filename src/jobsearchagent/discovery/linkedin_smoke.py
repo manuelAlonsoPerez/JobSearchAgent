@@ -237,10 +237,18 @@ class LinkedInScraperSmokeTest:
                     f"Run: ollama pull {self.jev.model}"
                 ) from exc
             raise RuntimeError(f"JEV health check failed: {exc}") from exc
-        except httpx.HTTPError as exc:
+        except httpx.TimeoutException as exc:
+            raise RuntimeError(
+                "Ollama's JEV request timed out. The model may still be loading "
+                "or may be too slow on the available hardware. Increase "
+                "JEV_TIMEOUT_SECONDS if needed."
+            ) from exc
+        except httpx.ConnectError as exc:
             raise RuntimeError(
                 "Cannot reach local Ollama. Start it before running this test."
             ) from exc
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"JEV request failed: {exc}") from exc
 
     def _ensure_manual_login(self, page: Page) -> None:
         page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")

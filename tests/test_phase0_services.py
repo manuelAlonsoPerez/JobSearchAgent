@@ -40,7 +40,7 @@ class JevTests(unittest.TestCase):
                     "probabilities": {"accept": 0.91, "reject": 0.09},
                 }
             elif question["type"] == "noul":
-                answer = {"probability": 0.8}
+                answer = {"type": "noul", "noul": 0.8}
             else:
                 answer = {"score": 1.75}
             return httpx.Response(200, json={"answers": {"q": answer}})

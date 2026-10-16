@@ -21,14 +21,17 @@ class Jev:
         self,
         base_url: str | None = None,
         model: str | None = None,
-        timeout: float = 60.0,
+        timeout: float | None = None,
         client: httpx.Client | None = None,
     ) -> None:
         settings = get_settings()
         self.base_url = (base_url or settings.ollama_base_url).rstrip("/")
         self.model = model or settings.jev_model
         self._owns_client = client is None
-        self._client = client or httpx.Client(timeout=timeout)
+        request_timeout = (
+            timeout if timeout is not None else settings.jev_timeout_seconds
+        )
+        self._client = client or httpx.Client(timeout=request_timeout)
 
     def close(self) -> None:
         if self._owns_client:
@@ -107,7 +110,10 @@ class Jev:
             state,
             {"type": "noul", "instructions": instructions},
         )
-        value = answer.get("probability", answer.get("true"))
+        value = answer.get(
+            "noul",
+            answer.get("probability", answer.get("true")),
+        )
         if value is None and isinstance(answer.get("answer"), bool):
             value = 1.0 if answer["answer"] else 0.0
         return self._probability(value, "noul")

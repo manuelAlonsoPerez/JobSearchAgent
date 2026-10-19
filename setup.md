@@ -140,7 +140,7 @@ past week, ordered by relevance. It prints the extracted offer and JEV's typed p
 outcome, and fit result for each job, then asks whether to analyze the next result.
 
 On CPU-only hardware, `nimble` can take several minutes for each of the two JEV decision stages.
-The terminal prints the stage and elapsed time. `JEV_TIMEOUT_SECONDS=300` in `.env` controls the
+The terminal prints the stage and elapsed time. `JEV_TIMEOUT_SECONDS=500` in `.env` controls the
 per-stage timeout.
 
 This smoke test does **not** submit applications. LinkedIn credentials are entered only in the

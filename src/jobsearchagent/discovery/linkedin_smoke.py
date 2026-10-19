@@ -139,9 +139,9 @@ class LinkedInScraperSmokeTest:
                         else:
                             self.print_decision(answers)
 
-                    if index < len(job_urls) and not self._continue():
-                        self.output("Stopped by user.")
-                        break
+                    # For the moment, analyze every offer automatically without
+                    # the interactive "Analyze the next job offer? [y/N]" prompt.
+                    # (``_continue`` is kept for tests / future re-enabling.)
         finally:
             if self._owns_jev:
                 self.jev.close()
@@ -512,7 +512,18 @@ class LinkedInScraperSmokeTest:
             if results.count():
                 results.evaluate("element => element.scrollTop = element.scrollHeight")
             else:
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                page.evaluate(
+                    """
+                    () => {
+                      const root = document.scrollingElement
+                        ?? document.documentElement
+                        ?? document.body;
+                      if (root) {
+                        window.scrollTo(0, root.scrollHeight);
+                      }
+                    }
+                    """
+                )
             page.wait_for_timeout(800)
         return list(collected.values())[: self.max_jobs]
 
@@ -582,9 +593,10 @@ class LinkedInScraperSmokeTest:
 
         try:
             page.goto(url, wait_until="commit", timeout=60_000)
+            page.locator("body").wait_for(state="attached", timeout=15_000)
         except PlaywrightTimeoutError as exc:
             raise RuntimeError(
-                f"LinkedIn did not start loading within 60 seconds: {url}"
+                f"LinkedIn did not produce a usable document while loading: {url}"
             ) from exc
 
     @staticmethod

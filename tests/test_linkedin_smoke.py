@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlsplit
 
 from jobsearchagent.discovery.linkedin_smoke import (
@@ -165,6 +165,30 @@ class LinkedInScraperSmokeTests(unittest.TestCase):
 
         self.assertEqual(results, [first, duplicate, last])
         self.assertEqual(navigate.call_count, 2)
+
+    def test_empty_search_document_scroll_does_not_require_body(self) -> None:
+        scraper = LinkedInScraperSmokeTest(
+            locations=["Norway"],
+            jev=StubJev(),
+            output_fn=lambda _: None,
+        )
+        page = MagicMock()
+        links = MagicMock()
+        links.evaluate_all.return_value = []
+        results = MagicMock()
+        results.last = results
+        results.count.return_value = 0
+        page.locator.side_effect = (
+            lambda selector: links
+            if selector == 'a[href*="/jobs/view/"]'
+            else results
+        )
+
+        self.assertEqual(scraper._collect_job_urls(page), [])
+
+        scroll_script = page.evaluate.call_args.args[0]
+        self.assertIn("document.scrollingElement", scroll_script)
+        self.assertIn("if (root)", scroll_script)
 
     def test_location_policy_uses_configured_locations(self) -> None:
         jev = StubJev()

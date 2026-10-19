@@ -118,6 +118,7 @@ CHROME_PROFILE_DIR=~/.jobsearchagent/chrome-profile
 LINKEDIN_SEARCH_PAGE_LIMIT=2
 LINKEDIN_DAILY_APPLY_LIMIT=10
 LINKEDIN_ACTION_DELAY_MS=1200
+JOB_LOCATIONS=["Norway", "Remote"]
 MIN_FIT=1.0            # score threshold (calibrate later)
 QUALITY_THRESHOLD=1.0  # JEV artifact-quality threshold
 MAX_ARTIFACT_ATTEMPTS=3
@@ -148,6 +149,7 @@ DRY_RUN=true           # never actually submits while true
       linkedin_search_page_limit: int
       linkedin_daily_apply_limit: int
       linkedin_action_delay_ms: int
+      job_locations: list[str]
       min_fit: float
       quality_threshold: float
       max_artifact_attempts: int

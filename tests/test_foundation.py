@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from jobsearchagent.config import (
     get_settings,
@@ -23,6 +25,13 @@ class ConfigTests(unittest.TestCase):
         self.assertGreater(settings.linkedin_daily_apply_limit, 0)
         self.assertFalse(str(settings.db_path).startswith("~"))
         self.assertIsInstance(settings.chrome_profile_dir, Path)
+        self.assertEqual(settings.job_locations, ["NORWAY", "REMOTE"])
+
+    def test_job_locations_accept_json_or_csv(self) -> None:
+        with patch.dict(os.environ, {"JOB_LOCATIONS": '["Norway", "Remote"]'}):
+            self.assertEqual(get_settings().job_locations, ["Norway", "Remote"])
+        with patch.dict(os.environ, {"JOB_LOCATIONS": "Norway,Remote"}):
+            self.assertEqual(get_settings().job_locations, ["Norway", "Remote"])
 
     def test_yaml_configuration_loads(self) -> None:
         self.assertIn("sites", load_sites())

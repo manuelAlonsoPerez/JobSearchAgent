@@ -110,21 +110,34 @@ From the repository root, run:
 ```bash
 PYTHONPATH=src python -m jobsearchagent.discovery.linkedin_smoke \
   --query ServiceNow \
-  --location Spain \
   --max-jobs 3
 ```
 
+The command reads search and acceptance locations from `.env`:
+
+```ini
+JOB_LOCATIONS=["Norway", "Remote"]
+```
+
+It searches each configured location. For JEV routing, a job is eligible when it is based in
+Norway, explicitly permits remote work from Norway, includes Norway through a wider scope such as
+EEA/Europe/Nordic, or is genuinely worldwide/unrestricted remote. A restricted remote job that
+excludes Norway is rejected; an ambiguous remote scope requires confirmation.
+
+For a one-off override, repeat `--location` as needed:
+
 ```bash
 PYTHONPATH=src python -m jobsearchagent.discovery.linkedin_smoke \
-  --query ServiceNow \
-  --location remote \
+  --query React \
+  --location Norway \
+  --location Remote \
   --max-jobs 3
 ```
 
 The command opens the persistent Chromium profile. Complete LinkedIn login manually when requested,
-then return to the terminal and press Enter. The test searches for remote ServiceNow Easy Apply jobs
-in Spain from the past week, ordered by relevance. It prints the extracted offer and JEV's typed
-profile/outcome/fit result for each job, then asks whether to analyze the next result.
+then return to the terminal and press Enter. The test searches for remote Easy Apply jobs from the
+past week, ordered by relevance. It prints the extracted offer and JEV's typed profile, location,
+outcome, and fit result for each job, then asks whether to analyze the next result.
 
 On CPU-only hardware, `nimble` can take several minutes for each of the two JEV decision stages.
 The terminal prints the stage and elapsed time. `JEV_TIMEOUT_SECONDS=300` in `.env` controls the

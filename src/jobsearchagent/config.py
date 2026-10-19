@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,7 @@ class Settings(BaseModel):
     quality_threshold: float = 1.0
     max_artifact_attempts: int = Field(default=3, ge=1)
     max_browser_attempts: int = Field(default=3, ge=1)
+    job_locations: list[str] = Field(min_length=1)
     dry_run: bool = True
 
 
@@ -64,9 +66,40 @@ def get_settings() -> Settings:
         quality_threshold=os.getenv("QUALITY_THRESHOLD", "1.0"),
         max_artifact_attempts=os.getenv("MAX_ARTIFACT_ATTEMPTS", "3"),
         max_browser_attempts=os.getenv("MAX_BROWSER_ATTEMPTS", "3"),
+        job_locations=_parse_job_locations(_required_env("JOB_LOCATIONS")),
         dry_run=os.getenv("DRY_RUN", "true"),
     )
     return settings
+
+
+def _parse_job_locations(raw: str) -> list[str]:
+    """Parse ``JOB_LOCATIONS`` as a JSON array or comma-separated string."""
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        parsed = raw.split(",")
+
+    if isinstance(parsed, str):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        raise ValueError(
+            "JOB_LOCATIONS must be a JSON array or comma-separated list"
+        )
+
+    locations = [str(location).strip() for location in parsed if str(location).strip()]
+    if not locations:
+        raise ValueError("JOB_LOCATIONS must contain at least one location")
+    return locations
+
+
+def _required_env(name: str) -> str:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        raise ValueError(
+            f"{name} is required. Copy .env.example to .env and configure it."
+        )
+    return value
 
 
 def _load_yaml(filename: str) -> dict[str, Any]:

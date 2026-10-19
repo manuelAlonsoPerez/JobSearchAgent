@@ -161,9 +161,12 @@ sites:
     type: static
 
   # Aggregators. Indeed rejects plain HTTP clients (403); use a browser.
-  # LinkedIn guest search also rate-limits. The public search URL is the
-  # one a browser agent should open. geo is whatever {location_encoded}
-  # resolves to: Spain, Madrid, Barcelona, Remote.
+  # LinkedIn guest search also rate-limits. The browser opens a relevance-
+  # sorted, past-week, remote-only search. Easy Apply is added dynamically
+  # by config.linkedin_search_url(), so it can still be disabled in tests.
+  # Keep location explicit: omitting it can fall back to the account/visitor
+  # region. currentJobId is deliberately omitted because it only selects a
+  # result card and is not part of the reusable search.
   - name: "Talent.com Spain"
     url: "https://es.talent.com/jobs?k={query_encoded}&l={location_encoded}"
     type: search
@@ -173,7 +176,7 @@ sites:
     type: search
 
   - name: "LinkedIn Jobs"
-    url: "https://www.linkedin.com/jobs/search/?keywords={query_encoded}&location={location_encoded}&f_TPR=r604800&sortBy=DD"
+    url: "https://www.linkedin.com/jobs/search/?keywords={query_encoded}&location={location_encoded}&f_TPR=r604800&f_WT=2&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true&sortBy=R"
     type: search
 
   # EuroTechJobs puts the keyword in the path. Use one token

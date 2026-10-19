@@ -182,10 +182,13 @@ answers = jev.ask(
            "profile": profile_summary},        # ground the decision well
     questions={
         "outcome": {"type": "choice", "instructions": "Pick the outcome for this candidate.",
-                    "criteria": {"accept": "Required skills matched, no blocking constraint",
-                                 "reject": "A required skill is missing or a hard mismatch",
-                                 "needs_confirmation": "Needs a CEFR grade, Spain residence, or English score"}},
-        "fit":     {"type": "score", "instructions": "How well does the profile fit?",
+                    "criteria": {
+                        "accept": "Core stack and minimum experience match; no confirmed hard blocker",
+                        "reject": "A core requirement, minimum experience, or mandatory constraint is confirmed unmet",
+                        "needs_confirmation": "A possible hard blocker depends on an unknown fact",
+                    }},
+        "fit":     {"type": "score",
+                    "instructions": "How well does the profile fit? Reduce the score for secondary-skill gaps.",
                     "criteria": ["Weak", "Partial", "Strong"]},
     },
 )
@@ -194,6 +197,8 @@ fit     = answers["fit"].get("score")
 ```
 
 > The `needs_confirmation` option maps straight to the **review queue** — never guessed.
+> Missing secondary or nice-to-have skills lower `fit`; they do not produce
+> `reject` without a confirmed hard blocker.
 
 ### 5.2 Requirements — one `noul` per artifact (step 3)
 

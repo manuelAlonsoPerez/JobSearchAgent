@@ -195,7 +195,7 @@ DRY_RUN=true           # never actually submits while true
   ```
 - **Done when:** models import; a `JobState` round-trips through the reducer in a unit test.
 
-### ☐ Part F3 — `database.py` · `CODE`
+### ☑ Part F3 — `database.py` · `CODE`
 - **Goal:** SQLite system-of-record + review queue + LangGraph checkpointer.
 - **Depends on:** F1, F2.
 - **Provides:** `init_db()`, `upsert_job(state)`, `record_result(state)`,
@@ -239,7 +239,7 @@ DRY_RUN=true           # never actually submits while true
 
 # Phase 1 — Discovery & triage
 
-### ☐ Part A1 — `discovery/linkedin.py` · `CODE`+`BROWSER`
+### ☑ Part A1 — `discovery/linkedin.py` · `CODE`+`BROWSER`
 - **Goal:** search authenticated LinkedIn for a query/location pair and return normalized candidate
   jobs with their full descriptions.
 - **Depends on:** F1, F2, F3, F4c.
@@ -264,7 +264,7 @@ DRY_RUN=true           # never actually submits while true
   location, and non-empty description; repeated runs produce no duplicate seeds; an external-apply
   job is classified without opening or filling the external ATS.
 
-### ☐ Part A2 — `triage/triage.py` · `JEV`
+### ☑ Part A2 — `triage/triage.py` · `JEV`
 - **Goal:** pick one profile + outcome + fit in one JEV call.
 - **Depends on:** F4a, F1 (`work_profiles.yaml` `match_rules`).
 - **Reads:** `raw_description,title` + profile summaries. **Writes:** `profile_id, outcome, fit_score, review_reason?`.

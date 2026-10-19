@@ -148,3 +148,29 @@ browser and are not stored in `.env` or read by the script.
 
 This exercises the current discovery-and-triage MVP slice. CV generation, form filling, and
 submission are later build-guide phases and are not part of this command yet.
+
+## 8. Run the production LinkedIn discovery-and-triage agent
+
+The production entry point reuses the smoke-tested scraper and JEV policy, deduplicates jobs in
+SQLite, persists each result, and sends external applications, uncertain decisions, and failures
+to the non-blocking review queue:
+
+```bash
+PYTHONPATH=src python -m jobsearchagent.linkedin_agent \
+  --query React \
+  --max-jobs 5
+```
+
+It reads locations from `JOB_LOCATIONS`. Repeat `--location` to override them for one run:
+
+```bash
+PYTHONPATH=src python -m jobsearchagent.linkedin_agent \
+  --query ServiceNow \
+  --location Norway \
+  --location Remote \
+  --max-jobs 5
+```
+
+Accepted Easy Apply jobs are currently stored as `dry_run_ready`. This command deliberately does
+not fill or submit LinkedIn forms yet; document generation, validation, Easy Apply form handling,
+and submission remain Parts A3–A7 of the build guide.

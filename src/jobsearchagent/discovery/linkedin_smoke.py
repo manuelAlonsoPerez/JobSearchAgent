@@ -30,6 +30,8 @@ from ..config import (
     load_work_profiles,
 )
 from ..jev import Jev
+from ..models import JobState
+from ..triage import triage
 from ..utils.text import (
     canonicalize_url,
     clean_job_text,
@@ -69,6 +71,7 @@ class LinkedInScraperSmokeTest:
         locations: list[str] | None = None,
         max_jobs: int = 3,
         easy_apply_only: bool = True,
+        date_posted_seconds: int | None = None,
         jev: Jev | None = None,
         input_fn: Callable[[str], str] = input,
         output_fn: Callable[[str], None] = print,
@@ -94,6 +97,7 @@ class LinkedInScraperSmokeTest:
         self.location = selected_locations[0]  # compatibility for existing callers
         self.max_jobs = max_jobs
         self.easy_apply_only = easy_apply_only
+        self.date_posted_seconds = date_posted_seconds
         self.jev = jev or Jev()
         self._owns_jev = jev is None
         self.input = input_fn
@@ -147,7 +151,13 @@ class LinkedInScraperSmokeTest:
                 self.jev.close()
 
     def build_search_url(self, location: str | None = None) -> str:
-        """Build a recent, remote-only LinkedIn search URL."""
+        """Build a recent, remote-only LinkedIn search URL.
+
+        When ``date_posted_seconds`` is set it overrides LinkedIn's "date
+        posted" filter (``f_TPR=r<seconds>``), e.g. ``7200`` for the last two
+        hours. A value of ``0`` removes the filter entirely (any time), and
+        ``None`` keeps whatever the site template already defines.
+        """
 
         base = linkedin_search_url(
             self.query,
@@ -157,6 +167,12 @@ class LinkedInScraperSmokeTest:
         parts = urlsplit(base)
         parameters = dict(parse_qsl(parts.query, keep_blank_values=True))
         parameters["f_WT"] = "2"  # LinkedIn workplace type: remote
+        if self.date_posted_seconds is not None:
+            if self.date_posted_seconds > 0:
+                # LinkedIn "date posted" filter: r<seconds> time window.
+                parameters["f_TPR"] = f"r{self.date_posted_seconds}"
+            else:
+                parameters.pop("f_TPR", None)  # any time
         return urlunsplit(
             (
                 parts.scheme,
@@ -195,7 +211,44 @@ class LinkedInScraperSmokeTest:
         return selected
 
     def decide(self, job: ScrapedJob) -> dict[str, Any]:
-        """Return JEV's typed profile, outcome, and fit decisions."""
+        """Run the production triage policy and expose its diagnostic answers."""
+
+        update = triage(
+            JobState(
+                url=job.url,
+                source_job_id=job.source_job_id,
+                title=job.title,
+                company=job.company,
+                location=job.location,
+                site="LinkedIn Jobs",
+                raw_description=job.description,
+                easy_apply=job.easy_apply,
+            ),
+            jev=self.jev,
+            locations=self.locations,
+            profile_config=self.profile_config,
+            progress=lambda message: self.output(f"  {message}"),
+        )
+        details = update["triage_details"]
+        return {
+            "profile": details["profile"],
+            "location_eligibility": details["location_eligibility"],
+            "jev_non_location_outcome": details["non_location_outcome"],
+            "fit": details["fit"],
+            "outcome": {
+                "type": "policy",
+                "choice": update["outcome"],
+                "location_eligibility": details["location_eligibility"].get(
+                    "choice"
+                ),
+                "non_location_choice": details["non_location_outcome"].get(
+                    "choice"
+                ),
+            },
+        }
+
+    def _legacy_decide(self, job: ScrapedJob) -> dict[str, Any]:
+        """Previous inline policy retained temporarily for output compatibility."""
 
         profiles = self.profile_config.get("work_profiles", {})
         if not isinstance(profiles, Mapping) or not profiles:
@@ -717,6 +770,41 @@ class LinkedInScraperSmokeTest:
         return answer.strip().casefold() in {"y", "yes"}
 
 
+def _parse_date_posted(value: str) -> int:
+    """Parse a ``--date-posted`` value into a LinkedIn time window in seconds.
+
+    Accepts friendly presets (``any``, ``hour``, ``2h``, ``24h``, ``day``,
+    ``week``, ``month``), compact forms like ``30m``/``2h``/``3d``/``1w``, or a
+    raw number of seconds. ``any``/``all`` return ``0`` (no time filter).
+    """
+
+    normalized = value.strip().lower()
+    presets = {
+        "any": 0,
+        "all": 0,
+        "hour": 3_600,
+        "day": 86_400,
+        "week": 604_800,
+        "month": 2_592_000,
+    }
+    if normalized in presets:
+        return presets[normalized]
+
+    match = re.fullmatch(r"(\d+)\s*([smhdw])", normalized)
+    if match:
+        amount = int(match.group(1))
+        unit_seconds = {"s": 1, "m": 60, "h": 3_600, "d": 86_400, "w": 604_800}
+        return amount * unit_seconds[match.group(2)]
+
+    if normalized.isdigit():
+        return int(normalized)
+
+    raise argparse.ArgumentTypeError(
+        "Use a preset (any, hour, 2h, 24h, day, week, month), a compact form "
+        "like 30m/2h/3d/1w, or a number of seconds."
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
@@ -736,6 +824,18 @@ def main() -> None:
     )
     parser.add_argument("--max-jobs", type=int, default=3)
     parser.add_argument(
+        "--date-posted",
+        type=_parse_date_posted,
+        default=None,
+        metavar="WINDOW",
+        help=(
+            "Limit results by how recently they were posted. Presets: any, "
+            "hour, 2h, 24h, day, week, month; compact forms like 30m/2h/3d/1w; "
+            "or raw seconds (e.g. 7200 = last 2 hours). Defaults to the site "
+            "template (past week)."
+        ),
+    )
+    parser.add_argument(
         "--include-external",
         action="store_true",
         help="Include jobs without LinkedIn Easy Apply.",
@@ -748,6 +848,7 @@ def main() -> None:
             locations=arguments.locations,
             max_jobs=arguments.max_jobs,
             easy_apply_only=not arguments.include_external,
+            date_posted_seconds=arguments.date_posted,
         ).run()
     except RuntimeError as exc:
         raise SystemExit(f"Cannot run LinkedIn scraper smoke test: {exc}") from None

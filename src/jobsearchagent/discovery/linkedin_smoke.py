@@ -5,19 +5,23 @@ persistent browser profile, and each scraped job is evaluated one at a time.
 
 Run from the repository root:
 
-    PYTHONPATH=src python -m jobsearchagent.discovery.linkedin_smoke
+    PYTHONPATH=src python -m jobsearchagent.discovery.linkedin_smoke \
+        --query ServiceNow --location Spain --max-jobs 3
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from ..browser import session
 from ..config import (
@@ -62,7 +66,7 @@ class LinkedInScraperSmokeTest:
         *,
         query: str = "ServiceNow",
         location: str = "Spain",
-        max_jobs: int = 10,
+        max_jobs: int = 3,
         easy_apply_only: bool = True,
         jev: Jev | None = None,
         input_fn: Callable[[str], str] = input,
@@ -90,7 +94,7 @@ class LinkedInScraperSmokeTest:
                 self._ensure_manual_login(page)
                 search_url = self.build_search_url()
                 self.output(f"\nSearching LinkedIn: {search_url}")
-                page.goto(search_url, wait_until="domcontentloaded")
+                self._navigate(page, search_url)
                 self._raise_for_security_challenge(page)
 
                 job_urls = self._collect_job_urls(page)
@@ -100,12 +104,29 @@ class LinkedInScraperSmokeTest:
 
                 self.output(f"Found {len(job_urls)} jobs to inspect.\n")
                 for index, job_url in enumerate(job_urls, start=1):
+                    self.output(f"\n[{index}/{len(job_urls)}] Reading {job_url}")
                     try:
                         job = self._scrape_job(page, job_url)
-                        answers = self.decide(job)
-                        self.print_result(index, len(job_urls), job, answers)
+                    except PlaywrightTimeoutError as exc:
+                        self.output(f"LinkedIn page-reading timeout: {exc}")
                     except Exception as exc:
-                        self.output(f"\nCould not analyze {job_url}: {exc}")
+                        self.output(f"Could not read this offer: {exc}")
+                    else:
+                        self.print_scraped_job(index, len(job_urls), job)
+                        self.output("\nAnalyzing the extracted offer with JEV...")
+                        try:
+                            answers = self.decide(job)
+                        except httpx.TimeoutException:
+                            timeout = get_settings().jev_timeout_seconds
+                            self.output(
+                                "JEV timed out after "
+                                f"{timeout:g} seconds. The offer was read correctly, "
+                                "but the local decision model did not finish."
+                            )
+                        except Exception as exc:
+                            self.output(f"JEV could not analyze this offer: {exc}")
+                        else:
+                            self.print_decision(answers)
 
                     if index < len(job_urls) and not self._continue():
                         self.output("Stopped by user.")
@@ -143,24 +164,24 @@ class LinkedInScraperSmokeTest:
             raise ValueError("No work profiles are configured")
 
         profile_options = {
-            str(profile_id): self._profile_option(profile)
+            str(profile_id): self._profile_selection_option(profile)
             for profile_id, profile in profiles.items()
             if isinstance(profile, Mapping)
         }
-        state = {
-            "job": {
-                "title": job.title,
-                "company": job.company,
-                "location": job.location,
-                "description": job.description[:16_000],
-                "easy_apply": job.easy_apply,
+        self.output(
+            "  JEV 1/2: selecting exactly one work profile "
+            "(local CPU inference may take several minutes)..."
+        )
+        started = time.monotonic()
+        profile_answers = self.jev.ask(
+            state={
+                "job": {
+                    "title": job.title,
+                    "location": job.location,
+                    "description": job.description[:4_000],
+                },
+                "profiles": profile_options,
             },
-            "candidate_shared": self.profile_config.get("shared", {}),
-            "match_rules": self.profile_config.get("match_rules", {}),
-            "profiles": profile_options,
-        }
-        return self.jev.ask(
-            state=state,
             questions={
                 "profile": {
                     "type": "choice",
@@ -170,11 +191,54 @@ class LinkedInScraperSmokeTest:
                     ),
                     "criteria": profile_options,
                 },
+            },
+        )
+        profile_answer = profile_answers.get("profile")
+        if not isinstance(profile_answer, Mapping):
+            raise ValueError("JEV returned no typed profile decision")
+        selected_profile_id = profile_answer.get(
+            "choice",
+            profile_answer.get("answer"),
+        )
+        selected_profile = profiles.get(selected_profile_id)
+        if not isinstance(selected_profile_id, str) or not isinstance(
+            selected_profile,
+            Mapping,
+        ):
+            raise ValueError(
+                f"JEV selected an unknown profile: {selected_profile_id!r}"
+            )
+
+        self.output(
+            f"  Profile selection finished in {time.monotonic() - started:.1f}s: "
+            f"{selected_profile_id}."
+        )
+        self.output(
+            "  JEV 2/2: deciding outcome and fit "
+            "(local CPU inference may take several minutes)..."
+        )
+        started = time.monotonic()
+        state = {
+            "job": {
+                "title": job.title,
+                "company": job.company,
+                "location": job.location,
+                "description": job.description[:10_000],
+                "easy_apply": job.easy_apply,
+            },
+            "candidate_shared": self.profile_config.get("shared", {}),
+            "match_rules": self.profile_config.get("match_rules", {}),
+            "selected_profile_id": selected_profile_id,
+            "selected_profile": selected_profile,
+        }
+        outcome_answers = self.jev.ask(
+            state=state,
+            questions={
                 "outcome": {
                     "type": "choice",
                     "instructions": (
-                        "Decide whether this candidate should apply, following "
-                        "match_rules exactly."
+                        "Decide whether this candidate should apply. Use only "
+                        "selected_profile and follow match_rules exactly."
                     ),
                     "criteria": {
                         "accept": (
@@ -194,7 +258,7 @@ class LinkedInScraperSmokeTest:
                 "fit": {
                     "type": "score",
                     "instructions": (
-                        "Score the candidate's fit using only the selected profile "
+                        "Score the candidate's fit using only selected_profile "
                         "and the job's required qualifications."
                     ),
                     "criteria": [
@@ -205,15 +269,21 @@ class LinkedInScraperSmokeTest:
                 },
             },
         )
+        self.output(
+            f"  Outcome and fit finished in {time.monotonic() - started:.1f}s."
+        )
+        return {
+            "profile": dict(profile_answer),
+            **outcome_answers,
+        }
 
-    def print_result(
+    def print_scraped_job(
         self,
         index: int,
         total: int,
         job: ScrapedJob,
-        answers: Mapping[str, Any],
     ) -> None:
-        """Print job details and JEV's typed result."""
+        """Prove that the offer was extracted before invoking JEV."""
 
         self.output("\n" + "=" * 78)
         self.output(f"[{index}/{total}] {job.title}")
@@ -221,6 +291,15 @@ class LinkedInScraperSmokeTest:
         self.output(f"Location: {job.location}")
         self.output(f"Easy Apply: {'yes' if job.easy_apply else 'no'}")
         self.output(f"URL: {job.url}")
+        self.output(f"Description extracted: {len(job.description)} characters")
+        preview = job.description[:500]
+        if len(job.description) > len(preview):
+            preview += "..."
+        self.output(f"\nDescription preview:\n{preview}")
+
+    def print_decision(self, answers: Mapping[str, Any]) -> None:
+        """Print JEV's typed result without claiming hidden reasoning."""
+
         self.output("\nJEV typed decision result (labels/probabilities, not prose reasoning):")
         self.output(json.dumps(dict(answers), indent=2, ensure_ascii=False))
 
@@ -251,18 +330,18 @@ class LinkedInScraperSmokeTest:
             raise RuntimeError(f"JEV request failed: {exc}") from exc
 
     def _ensure_manual_login(self, page: Page) -> None:
-        page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
+        self._navigate(page, "https://www.linkedin.com/feed/")
         if not self._requires_login(page):
             self.output("LinkedIn persistent profile is already logged in.")
             return
 
-        page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded")
+        self._navigate(page, "https://www.linkedin.com/login")
         self.output(
             "\nComplete LinkedIn login manually in the opened browser. "
             "The script never reads or stores your credentials."
         )
         self.input("Press Enter here after LinkedIn shows your feed: ")
-        page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
+        self._navigate(page, "https://www.linkedin.com/feed/")
         if self._requires_login(page):
             raise RuntimeError(
                 "LinkedIn login was not completed in the persistent profile."
@@ -308,18 +387,19 @@ class LinkedInScraperSmokeTest:
         return list(collected.values())[: self.max_jobs]
 
     def _scrape_job(self, page: Page, url: str) -> ScrapedJob:
-        page.goto(url, wait_until="domcontentloaded")
+        self._navigate(page, url)
         self._raise_for_security_challenge(page)
+        try:
+            page.locator(
+                "#job-details, .jobs-description__content, "
+                "[data-testid='expandable-text-box']"
+            ).first.wait_for(state="visible", timeout=15_000)
+        except PlaywrightTimeoutError:
+            # Extraction below reports a useful error if LinkedIn never renders
+            # the detail panel.
+            pass
         self._expand_description(page)
 
-        title = self._first_text(
-            page,
-            (
-                ".job-details-jobs-unified-top-card__job-title h1",
-                ".job-details-jobs-unified-top-card__job-title",
-                "h1",
-            ),
-        )
         company = self._first_text(
             page,
             (
@@ -329,13 +409,21 @@ class LinkedInScraperSmokeTest:
                 "a[href*='/company/']",
             ),
         )
+        title = self._first_text(
+            page,
+            (
+                ".job-details-jobs-unified-top-card__job-title h1",
+                ".job-details-jobs-unified-top-card__job-title",
+                "h1",
+            ),
+        ) or self._title_from_document(page.title(), company)
         location = self._first_text(
             page,
             (
                 ".job-details-jobs-unified-top-card__primary-description-container",
                 ".jobs-unified-top-card__bullet",
             ),
-        )
+        ) or self._new_layout_location(page, title)
         description = self._first_text(
             page,
             (
@@ -343,7 +431,7 @@ class LinkedInScraperSmokeTest:
                 ".jobs-description__content",
                 ".jobs-box__html-content",
             ),
-        )
+        ) or self._new_layout_description(page)
         if not title or not description:
             raise RuntimeError("LinkedIn job title or description was not available")
 
@@ -359,14 +447,32 @@ class LinkedInScraperSmokeTest:
         )
 
     @staticmethod
+    def _navigate(page: Page, url: str) -> None:
+        """Navigate without waiting for LinkedIn's long-lived page resources."""
+
+        try:
+            page.goto(url, wait_until="commit", timeout=60_000)
+        except PlaywrightTimeoutError as exc:
+            raise RuntimeError(
+                f"LinkedIn did not start loading within 60 seconds: {url}"
+            ) from exc
+
+    @staticmethod
     def _expand_description(page: Page) -> None:
         names = re.compile(
-            r"show more|see more|ver más|mostrar más|vis mer",
+            r"show more|see more|ver más|mostrar más|vis mer|^\s*(?:…|\.\.\.)\s*more\s*$",
             re.IGNORECASE,
         )
-        button = page.get_by_role("button", name=names).first
-        if button.count() and button.is_visible():
-            button.click()
+        controls = (
+            page.get_by_role("button", name=names),
+            page.get_by_text(names),
+        )
+        for matches in controls:
+            control = matches.first
+            if control.count() and control.is_visible():
+                control.click()
+                page.wait_for_timeout(300)
+                return
 
     @staticmethod
     def _first_text(page: Page, selectors: tuple[str, ...]) -> str:
@@ -379,7 +485,74 @@ class LinkedInScraperSmokeTest:
         return ""
 
     @staticmethod
-    def _profile_option(profile: Mapping[str, Any]) -> str:
+    def _title_from_document(document_title: str, company: str) -> str:
+        """Extract the job title from LinkedIn's stable browser-tab title."""
+
+        title = re.sub(r"\s*\|\s*LinkedIn\s*$", "", document_title).strip()
+        if company:
+            title = re.sub(
+                rf"\s*\|\s*{re.escape(company)}\s*$",
+                "",
+                title,
+                flags=re.IGNORECASE,
+            ).strip()
+        return title
+
+    @staticmethod
+    def _new_layout_description(page: Page) -> str:
+        """Read the description from LinkedIn's class-name-free detail layout."""
+
+        return page.evaluate(
+            """
+            () => {
+              const names = new Set([
+                "about the job",
+                "acerca del empleo",
+                "sobre el empleo",
+                "om jobben"
+              ]);
+              const heading = [...document.querySelectorAll(
+                "h1, h2, h3, [role='heading']"
+              )].find(element =>
+                names.has((element.textContent || "").trim().toLowerCase())
+              );
+              if (!heading) return "";
+
+              let container = heading.parentElement;
+              while (container && container !== document.body) {
+                const text = (container.innerText || "").trim();
+                if (text.length >= 120 && text.length <= 30000) {
+                  return text.replace(
+                    /^(About the job|Acerca del empleo|Sobre el empleo|Om jobben)\\s*/i,
+                    ""
+                  ).trim();
+                }
+                container = container.parentElement;
+              }
+              return "";
+            }
+            """
+        )
+
+    @staticmethod
+    def _new_layout_location(page: Page, title: str) -> str:
+        if not title:
+            return ""
+        title_element = page.get_by_text(title, exact=True).first
+        if not title_element.count():
+            return ""
+        metadata = title_element.locator(
+            "xpath=following::p[normalize-space()][1]"
+        )
+        if not metadata.count():
+            return ""
+        text = metadata.inner_text(timeout=5_000).strip()
+        return text.split("·", 1)[0].strip()
+
+    @staticmethod
+    def _profile_selection_option(profile: Mapping[str, Any]) -> str:
+        """Keep profile selection small; full facts are sent only after selection."""
+
         skills = profile.get("skills", [])
         skill_names = [
             str(skill.get("name"))
@@ -393,8 +566,6 @@ class LinkedInScraperSmokeTest:
                 "years_relevant": profile.get("years_relevant"),
                 "skills": skill_names,
                 "matching_titles": profile.get("matching_titles", []),
-                "weak_fit": profile.get("weak_fit", []),
-                "not_claimed": profile.get("not_claimed", []),
             },
             ensure_ascii=False,
         )
@@ -405,8 +576,29 @@ class LinkedInScraperSmokeTest:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Interactively test LinkedIn discovery and JEV triage. "
+            "No applications are submitted."
+        )
+    )
+    parser.add_argument("--query", default="ServiceNow")
+    parser.add_argument("--location", default="Spain")
+    parser.add_argument("--max-jobs", type=int, default=3)
+    parser.add_argument(
+        "--include-external",
+        action="store_true",
+        help="Include jobs without LinkedIn Easy Apply.",
+    )
+    arguments = parser.parse_args()
+
     try:
-        LinkedInScraperSmokeTest().run()
+        LinkedInScraperSmokeTest(
+            query=arguments.query,
+            location=arguments.location,
+            max_jobs=arguments.max_jobs,
+            easy_apply_only=not arguments.include_external,
+        ).run()
     except RuntimeError as exc:
         raise SystemExit(f"Cannot run LinkedIn scraper smoke test: {exc}") from None
 

@@ -34,8 +34,12 @@ class ConfigTests(unittest.TestCase):
 
         self.assertIn("keywords=ServiceNow+developer", url)
         self.assertIn("location=Spain", url)
-        self.assertIn("sortBy=DD", url)
+        self.assertIn("sortBy=R", url)
+        self.assertIn("f_WT=2", url)
+        self.assertIn("origin=JOB_SEARCH_PAGE_JOB_FILTER", url)
+        self.assertIn("refresh=true", url)
         self.assertIn("f_AL=true", url)
+        self.assertNotIn("currentJobId", url)
 
 
 class ModelTests(unittest.TestCase):

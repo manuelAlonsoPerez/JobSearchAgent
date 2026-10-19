@@ -24,7 +24,7 @@ class Settings(BaseModel):
 
     ollama_base_url: str = "http://localhost:11434"
     jev_model: str = "nimble"
-    jev_timeout_seconds: float = Field(default=180.0, gt=0)
+    jev_timeout_seconds: float = Field(default=300.0, gt=0)
     writer_model: str = "qwen2.5:7b"
     apply_model: str = "qwen2.5:7b"
     db_path: Path = Path("~/.jobsearchagent/jobsearch.db")
@@ -50,7 +50,7 @@ def get_settings() -> Settings:
     settings = Settings(
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
         jev_model=os.getenv("JEV_MODEL", "nimble"),
-        jev_timeout_seconds=os.getenv("JEV_TIMEOUT_SECONDS", "180"),
+        jev_timeout_seconds=os.getenv("JEV_TIMEOUT_SECONDS", "300"),
         writer_model=os.getenv("WRITER_MODEL", "qwen2.5:7b"),
         apply_model=os.getenv("APPLY_MODEL", "qwen2.5:7b"),
         db_path=Path(os.getenv("DB_PATH", "~/.jobsearchagent/jobsearch.db")).expanduser(),

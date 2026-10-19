@@ -108,13 +108,30 @@ source .venv/bin/activate
 From the repository root, run:
 
 ```bash
-PYTHONPATH=src python -m jobsearchagent.discovery.linkedin_smoke
+PYTHONPATH=src python -m jobsearchagent.discovery.linkedin_smoke \
+  --query ServiceNow \
+  --location Spain \
+  --max-jobs 3
+```
+
+```bash
+PYTHONPATH=src python -m jobsearchagent.discovery.linkedin_smoke \
+  --query ServiceNow \
+  --location remote \
+  --max-jobs 3
 ```
 
 The command opens the persistent Chromium profile. Complete LinkedIn login manually when requested,
 then return to the terminal and press Enter. The test searches for remote ServiceNow Easy Apply jobs
-in Spain, prints JEV's typed profile/outcome/fit result for each job, and asks whether to analyze the
-next result.
+in Spain from the past week, ordered by relevance. It prints the extracted offer and JEV's typed
+profile/outcome/fit result for each job, then asks whether to analyze the next result.
+
+On CPU-only hardware, `nimble` can take several minutes for each of the two JEV decision stages.
+The terminal prints the stage and elapsed time. `JEV_TIMEOUT_SECONDS=300` in `.env` controls the
+per-stage timeout.
 
 This smoke test does **not** submit applications. LinkedIn credentials are entered only in the
 browser and are not stored in `.env` or read by the script.
+
+This exercises the current discovery-and-triage MVP slice. CV generation, form filling, and
+submission are later build-guide phases and are not part of this command yet.

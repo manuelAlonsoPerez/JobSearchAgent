@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from jobsearchagent.browser import a11y_text, page_to_form, session, upload
+from jobsearchagent.discovery.linkedin_smoke import LinkedInScraperSmokeTest
 from jobsearchagent.utils.pdf import render_pdf
 
 
@@ -63,6 +64,23 @@ class BrowserTests(unittest.TestCase):
                 "element => element.files[0].name"
             )
             self.assertEqual(uploaded_name, "resume.pdf")
+
+            page.set_content(
+                """
+                <section>
+                  <h2>About the job</h2>
+                  <div>
+                    We need a ServiceNow developer with Flow Designer and REST
+                    integration experience. The role is fully remote in Spain.
+                  </div>
+                  <h3>Requirements added by the job poster</h3>
+                  <p>3+ years of ServiceNow experience</p>
+                </section>
+                """
+            )
+            description = LinkedInScraperSmokeTest._new_layout_description(page)
+            self.assertIn("ServiceNow developer", description)
+            self.assertIn("Requirements added by the job poster", description)
 
 
 class PdfTests(unittest.TestCase):

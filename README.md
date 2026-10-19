@@ -225,3 +225,33 @@ Exit the SQLite prompt with:
 ```
 
 If `DB_PATH` has been changed in `.env`, pass that path to `sqlite3` instead.
+
+## Delete stored jobs
+
+To clear job data for a fresh discovery run while preserving the database file and its tables:
+
+```bash
+PYTHONPATH=src python scripts/delete_jobs.py
+```
+
+The script displays how many rows will be removed and requires typing `DELETE`. By default it
+clears both `jobs` and `review_queue`, because review entries refer to stored jobs.
+
+Preserve review-queue entries:
+
+```bash
+PYTHONPATH=src python scripts/delete_jobs.py --keep-review-queue
+```
+
+Skip the confirmation prompt, for example in a local test script:
+
+```bash
+PYTHONPATH=src python scripts/delete_jobs.py --yes
+```
+
+Use a database other than `DB_PATH`:
+
+```bash
+PYTHONPATH=src python scripts/delete_jobs.py \
+  --db-path /path/to/jobsearch.db
+```

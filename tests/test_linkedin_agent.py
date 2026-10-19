@@ -21,6 +21,7 @@ from jobsearchagent.discovery.linkedin import LinkedInDiscovery
 from jobsearchagent.linkedin_agent import LinkedInAgent
 from jobsearchagent.models import JobState
 from jobsearchagent.triage import triage
+from scripts.delete_jobs import delete_jobs
 
 
 class StubJev:
@@ -103,6 +104,36 @@ class DatabaseTests(unittest.TestCase):
                 ).fetchone()[0]
             self.assertEqual(jobs, 1)
             self.assertEqual(reviews, 1)
+
+    def test_delete_script_clears_rows_but_preserves_tables(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "jobs.db"
+            state = JobState(
+                site="LinkedIn Jobs",
+                source_job_id="123",
+                url="https://www.linkedin.com/jobs/view/123/",
+            )
+            upsert_job(state, path=path)
+            add_to_review(state["url"], "Test review", path=path)
+
+            deleted = delete_jobs(path)
+
+            self.assertEqual(deleted, (1, 1))
+            with sqlite3.connect(path) as connection:
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )
+                }
+                jobs = connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+                reviews = connection.execute(
+                    "SELECT COUNT(*) FROM review_queue"
+                ).fetchone()[0]
+            self.assertIn("jobs", tables)
+            self.assertIn("review_queue", tables)
+            self.assertEqual(jobs, 0)
+            self.assertEqual(reviews, 0)
 
 
 class DiscoveryTests(unittest.TestCase):

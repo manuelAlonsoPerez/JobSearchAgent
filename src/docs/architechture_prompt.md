@@ -84,6 +84,8 @@ the stateful "brain" *and* crash-resume for free.
 
 > ⚠️ **Anti-hallucination rules in `work_profiles.yaml`**
 > - A skill with **no record counts as missing**.
+> - Missing secondary skills reduce fit; only a confirmed core-stack,
+>   minimum-experience, or mandatory-constraint mismatch causes rejection.
 > - The English / TOEFL score **"is not remembered"** and must **not** be treated as B2/C1.
 > - Never claim a `not_claimed` skill.
 >

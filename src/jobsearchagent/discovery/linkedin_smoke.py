@@ -342,24 +342,30 @@ class LinkedInScraperSmokeTest:
                     ),
                     "criteria": {
                         "accept": (
-                            "All required skills and constraints match the selected "
-                            "profile; applying is reasonable."
+                            "The role's core stack and explicit minimum relevant "
+                            "experience match the selected profile, and no confirmed "
+                            "hard blocker exists. Missing secondary skills are allowed."
                         ),
                         "reject": (
-                            "A required skill is missing, explicitly not claimed, "
-                            "too old, or below a stated minimum."
+                            "At least one hard blocker is confirmed by explicit job "
+                            "and profile evidence: a core-stack mismatch, unmet minimum "
+                            "experience, primary weak-fit focus, or confirmed mandatory "
+                            "constraint. Never reject for secondary-skill gaps alone."
                         ),
                         "needs_confirmation": (
-                            "The role may fit but requires an unknown language grade, "
-                            "residence, authorization, schedule, or other fact."
+                            "The core role may fit, but a possible hard blocker depends "
+                            "on an unknown language grade, residence, authorization, "
+                            "schedule, experience classification, or other fact."
                         ),
                     },
                 },
                 "fit": {
                     "type": "score",
                     "instructions": (
-                        "Score the candidate's fit using only selected_profile "
-                        "and the job's required qualifications."
+                        "Score the candidate's fit using only selected_profile and "
+                        "the job's qualifications. Weight core-stack and minimum-"
+                        "experience evidence most heavily. Reduce fit for missing "
+                        "secondary skills without treating those gaps as rejection."
                     ),
                     "criteria": [
                         "Poor: hard mismatches dominate",

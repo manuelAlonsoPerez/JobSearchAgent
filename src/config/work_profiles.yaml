@@ -4,14 +4,29 @@
 
 match_rules:
   outcomes: [accept, reject, needs_confirmation]
+  definitions:
+    core_stack: >
+      Technologies and responsibilities that define the role, are emphasized
+      repeatedly, or are explicitly stated as mandatory/must-have.
+    secondary_skills: >
+      Supporting, preferred, nice-to-have, or incidental technologies that do
+      not define the role.
+    confirmed_hard_blockers:
+      - A core-stack skill is explicitly absent, not_claimed, too old for a stated current-depth requirement, or below a stated minimum.
+      - The profile's relevant experience is below an explicit minimum required for the role or its core stack.
+      - The role's primary focus matches a weak_fit entry rather than the profile's core work.
+      - A mandatory credential, degree, language, work-authorization, schedule, or other constraint is confirmed unmet.
   steps:
     - Select the one profile whose matching_titles best fits the offer title. Do not mix skills from two profiles.
-    - Compare each required skill to that profile's skills, case-insensitively, including aliases. A required skill with no record is missing.
-    - Reject when any required skill is missing, when the offer matches weak_fit or not_claimed, or when the skill's years are below the offer minimum.
+    - Identify the offer's core stack separately from its secondary skills before deciding the outcome.
+    - Compare named skills to that profile's skills, case-insensitively, including aliases. A skill with no record is missing, but a missing secondary skill is not a hard blocker.
+    - Require the core stack and any explicit minimum relevant experience to match.
     - Use the skill's years and last_used, not the career total, when the offer names a technology.
-    - A skill with level older fails a requirement for current or senior depth in that skill.
-    - Return needs_confirmation when the offer requires a CEFR grade, a spoken-language grade such as "alto", a numeric English test score, residence in Spain, or a fixed hybrid schedule. A passed TOEFL iBT that met the University of Oslo master's requirement satisfies a plain English requirement. The score is not remembered, so do not treat it as B2, C1, or any number.
-    - Accept only when every required skill matches and no constraint asks for confirmation.
+    - Treat a skill with level older as a blocker only when it is in the core stack and the offer explicitly requires current or senior depth in it.
+    - Missing secondary skills reduce the fit score but never cause rejection by themselves.
+    - Reject only when at least one confirmed_hard_blockers condition is supported by explicit offer and profile evidence.
+    - Return needs_confirmation when a possible hard blocker cannot be confirmed, including an unknown CEFR grade, spoken-language grade such as "alto", numeric English test score, residence requirement, work authorization, or fixed hybrid schedule. A passed TOEFL iBT that met the University of Oslo master's requirement satisfies a plain English requirement. The score is not remembered, so do not treat it as B2, C1, or any number.
+    - Accept when the core stack and explicit minimum experience match and there is no confirmed hard blocker. Secondary gaps remain reflected in fit.
 
 shared:
   candidate:

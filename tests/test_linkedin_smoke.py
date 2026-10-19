@@ -129,6 +129,17 @@ class LinkedInScraperSmokeTests(unittest.TestCase):
             jev.requests[1]["state"]["location_policy"]["configured_locations"],
             ["NORWAY", "REMOTE"],
         )
+        outcome_criteria = jev.requests[1]["questions"]["outcome"]["criteria"]
+        self.assertIn("core stack", outcome_criteria["accept"])
+        self.assertIn("secondary-skill gaps", outcome_criteria["reject"])
+        self.assertIn(
+            "secondary skills",
+            jev.requests[1]["questions"]["fit"]["instructions"],
+        )
+        hard_blockers = jev.requests[1]["state"]["match_rules"]["definitions"][
+            "confirmed_hard_blockers"
+        ]
+        self.assertTrue(hard_blockers)
 
     def test_searches_all_locations_and_deduplicates_results(self) -> None:
         scraper = LinkedInScraperSmokeTest(

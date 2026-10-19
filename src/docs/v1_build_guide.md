@@ -269,6 +269,9 @@ DRY_RUN=true           # never actually submits while true
 - **Depends on:** F4a, F1 (`work_profiles.yaml` `match_rules`).
 - **Reads:** `raw_description,title` + profile summaries. **Writes:** `profile_id, outcome, fit_score, review_reason?`.
 - **Behaviour:** `choice` over profiles (best match) → `choice` outcome (accept/reject/needs_confirmation) → `score` fit; `needs_confirmation` sets `review_reason`.
+- **Matching policy:** core stack and explicit minimum experience must match;
+  missing secondary skills lower fit but do not reject; reject only for a
+  confirmed hard blocker.
 - **Signature:** `def triage(state: JobState) -> dict: ...`
 - **Done when:** a clearly-matching ServiceNow job → `accept` + a `servicenow-developer` profile; an off-target job → `reject`; a residence/English-gated one → `needs_confirmation`.
 

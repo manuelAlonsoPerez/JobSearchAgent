@@ -36,10 +36,19 @@ Playwright browser session, local Ollama models, JEV typed decisions, and SQLite
 - Rejects only confirmed hard blockers.
 - Returns `accept`, `reject`, or `needs_confirmation` with a fit score.
 
+### Artifact requirements
+
+`jobsearchagent.triage.requirements`:
+
+- Assigns `["cv", "cover_letter"]` to accepted LinkedIn Easy Apply jobs.
+- Avoids preparing artifacts for rejected or external jobs.
+- Performs no additional model call for the fixed v1 requirements.
+- Provides independent JEV `noul` gates for optional future artifacts.
+
 ### Production LinkedIn agent
 
-`jobsearchagent.linkedin_agent` combines discovery, JEV triage, persistence, and non-blocking
-review routing:
+`jobsearchagent.linkedin_agent` combines discovery, JEV triage, artifact requirements,
+persistence, and non-blocking review routing:
 
 ```text
 LinkedIn search
@@ -47,6 +56,7 @@ LinkedIn search
   → deduplicate and persist
   → select one work profile
   → evaluate location, outcome, and fit
+  → determine required application artifacts
   → persist result or add a review-queue item
 ```
 

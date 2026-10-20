@@ -279,7 +279,7 @@ DRY_RUN=true           # never actually submits while true
 
 # Phase 2 — Preparation
 
-### ☐ Part A3 — `triage/requirements.py` · `CODE`+`JEV`
+### ☑ Part A3 — `triage/requirements.py` · `CODE`+`JEV`
 - **Goal:** decide required artifacts. **v1:** always `["cv","cover_letter"]`; structure for future `noul` extras.
 - **Depends on:** F4a.
 - **Writes:** `required_artifacts`.

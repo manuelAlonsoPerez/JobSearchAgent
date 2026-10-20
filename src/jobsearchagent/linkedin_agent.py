@@ -13,7 +13,7 @@ from .database import add_to_review, init_db, record_result
 from .discovery.linkedin import LinkedInDiscovery
 from .jev import Jev
 from .models import JobState
-from .triage import triage
+from .triage import decide_requirements, triage
 
 
 class LinkedInAgent:
@@ -98,6 +98,12 @@ class LinkedInAgent:
 
                 details = update.pop("triage_details", {})
                 state.update(update)
+                state.update(
+                    decide_requirements(
+                        state,
+                        jev=self.jev,
+                    )
+                )
                 self._route(state)
                 record_result(state)
                 self._print_decision(state, details)
@@ -152,6 +158,7 @@ class LinkedInAgent:
             "profile_id": state.get("profile_id"),
             "outcome": state.get("outcome"),
             "fit_score": state.get("fit_score"),
+            "required_artifacts": state.get("required_artifacts", []),
             "apply_status": state.get("apply_status"),
             "review_reason": state.get("review_reason"),
             "details": details,

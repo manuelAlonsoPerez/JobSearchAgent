@@ -12,7 +12,11 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 
 from .config import get_settings
 from .models import JobState
-from .utils.text import canonicalize_url, job_dedup_key
+from .utils.text import (
+    canonicalize_url,
+    extract_linkedin_job_id,
+    job_dedup_key,
+)
 
 
 def _database_path(path: str | Path | None = None) -> Path:
@@ -184,6 +188,57 @@ def record_result(
     """Persist the latest result for a job."""
 
     upsert_job(state, path=path)
+
+
+def get_job(
+    identifier: str,
+    *,
+    path: str | Path | None = None,
+) -> JobState | None:
+    """Load a persisted job by LinkedIn ID or URL."""
+
+    normalized = identifier.strip()
+    if not normalized:
+        raise ValueError("A job ID or URL is required")
+
+    init_db(path)
+    source_job_id = (
+        normalized
+        if normalized.isdigit()
+        else extract_linkedin_job_id(normalized)
+    )
+    canonical_url = (
+        canonicalize_url(normalized)
+        if "://" in normalized
+        else None
+    )
+    with _connection(path) as connection:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM jobs
+            WHERE (? IS NOT NULL AND source_job_id = ?)
+               OR (? IS NOT NULL AND url = ?)
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (
+                source_job_id,
+                source_job_id,
+                canonical_url,
+                canonical_url,
+            ),
+        ).fetchone()
+    if row is None:
+        return None
+
+    values = dict(row)
+    values.pop("dedup_key", None)
+    values.pop("discovered_at", None)
+    values.pop("updated_at", None)
+    values.pop("applied_at", None)
+    values["easy_apply"] = bool(values.get("easy_apply"))
+    return JobState(**values)
 
 
 def add_to_review(

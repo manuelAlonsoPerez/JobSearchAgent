@@ -45,6 +45,23 @@ Playwright browser session, local Ollama models, JEV typed decisions, and SQLite
 - Performs no additional model call for the fixed v1 requirements.
 - Provides independent JEV `noul` gates for optional future artifacts.
 
+Manually test A3 with a persisted LinkedIn URL or job ID:
+
+```bash
+PYTHONPATH=src python -m jobsearchagent.triage.smoke_requirements \
+  https://www.linkedin.com/jobs/view/4471047498/
+```
+
+The URL is only used to load the normalized output of discovery and triage from SQLite; the job
+is not scraped or analyzed again. A rejected job correctly returns no required artifacts. To test
+the accepted Easy Apply branch without changing its stored outcome:
+
+```bash
+PYTHONPATH=src python -m jobsearchagent.triage.smoke_requirements \
+  4471047498 \
+  --force-accepted-easy-apply
+```
+
 ### Production LinkedIn agent
 
 `jobsearchagent.linkedin_agent` combines discovery, JEV triage, artifact requirements,

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 
+from jobsearchagent.database import upsert_job
 from jobsearchagent.models import JobState
 from jobsearchagent.triage.requirements import decide_requirements
+from jobsearchagent.triage.smoke_requirements import evaluate_persisted_job
 
 
 class StubJev:
@@ -71,6 +75,37 @@ class RequirementsTests(unittest.TestCase):
             ["cv", "cover_letter", "portfolio"],
         )
         self.assertEqual(len(jev.calls), 2)
+
+    def test_smoke_runner_loads_previous_state_by_url_or_id(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "jobs.db"
+            state = JobState(
+                site="LinkedIn Jobs",
+                source_job_id="4471047498",
+                url="https://www.linkedin.com/jobs/view/4471047498/",
+                title="Software Developer",
+                company="Example",
+                outcome="reject",
+                fit_score=1.08,
+                profile_id="fullstack-developer",
+                easy_apply=True,
+            )
+            upsert_job(state, path=path)
+
+            rejected = evaluate_persisted_job(state["url"], database_path=path)
+            forced = evaluate_persisted_job(
+                "4471047498",
+                database_path=path,
+                force_accepted_easy_apply=True,
+            )
+
+        self.assertEqual(rejected["required_artifacts"], [])
+        self.assertEqual(rejected["previous_stage"]["outcome"], "reject")
+        self.assertEqual(
+            forced["required_artifacts"],
+            ["cv", "cover_letter"],
+        )
+        self.assertTrue(forced["smoke_override_applied"])
 
 
 if __name__ == "__main__":

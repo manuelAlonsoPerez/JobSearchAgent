@@ -1,0 +1,380 @@
+"""Open and navigate the live LinkedIn Easy Apply modal.
+
+This module contains the reusable browser mechanics for the Easy Apply flow:
+opening the modal, walking its steps *without ever submitting*, scoping field
+and text extraction to the modal, and mapping what it finds to required
+artifacts. It operates on an already-authenticated, already-navigated
+Playwright ``Page`` so callers control session, login, and navigation.
+
+Both the manual smoke runner (``smoke_requirements``) and the requirements
+decision (``requirements``) build on these helpers.
+"""
+
+from __future__ import annotations
+
+import re
+import tempfile
+from collections.abc import Callable
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from ..browser import page_to_form
+from ..models import ArtifactType, Form
+
+if TYPE_CHECKING:
+    from playwright.sync_api import Locator, Page
+
+
+# Easy Apply modal navigation. Submit is listed so we can stop *before* it and
+# never submit an application.
+_EASY_APPLY = re.compile(
+    r"easy apply|solicitud sencilla|enkel søknad|candidatura simplificada",
+    re.IGNORECASE,
+)
+_REVIEW = re.compile(
+    r"review|revisar|gjennomgå|se gjennom",
+    re.IGNORECASE,
+)
+_NEXT = re.compile(
+    r"continue|next|siguiente|continuar|neste|fortsett",
+    re.IGNORECASE,
+)
+_SUBMIT = re.compile(
+    r"submit application|submit|enviar solicitud|send søknad|send inn",
+    re.IGNORECASE,
+)
+_DISCARD = re.compile(r"discard|descartar|forkast", re.IGNORECASE)
+
+# The modal footer always exposes exactly one of these; the underlying job page
+# never does, so a visible footer button is a reliable "modal is open" signal.
+_FOOTER = re.compile(
+    "|".join(pattern.pattern for pattern in (_REVIEW, _NEXT, _SUBMIT)),
+    re.IGNORECASE,
+)
+
+# Artifact signals detected from field labels and modal text.
+_CV_KEYWORDS = re.compile(
+    r"\b(resume|résumé|cv|curriculum|currículum|curriculo|currículo|lebenslauf)\b",
+    re.IGNORECASE,
+)
+_COVER_LETTER_KEYWORDS = re.compile(
+    r"cover letter|carta de presentaci|motivation letter|motivasjonsbrev"
+    r"|søknadsbrev",
+    re.IGNORECASE,
+)
+
+_MAX_MODAL_STEPS = 6
+
+_OPEN_FAILURE_SCREENSHOT = "easy_apply_open_failure.png"
+
+
+def inspect_modal(
+    page: Page,
+    output_fn: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Open, walk, and dismiss the Easy Apply modal; return detected artifacts.
+
+    The ``page`` must already be authenticated and on the job's LinkedIn page.
+    Returns the per-step field summary plus :func:`detect_artifacts` output.
+    """
+
+    open_easy_apply(page, output_fn)
+    forms, texts = walk_modal(page, output_fn)
+    dismiss_modal(page)
+
+    detection = detect_artifacts(forms, texts)
+    return {
+        "steps": [
+            {
+                "step_label": form.step_label,
+                "field_labels": [field.label for field in form.fields],
+            }
+            for form in forms
+        ],
+        **detection,
+    }
+
+
+def has_easy_apply(page: Page) -> bool:
+    """Whether a visible Easy Apply button exists on the current job page."""
+
+    return _easy_apply_button(page) is not None
+
+
+def open_easy_apply(page: Page, output_fn: Callable[[str], None] = print) -> None:
+    """Click the Easy Apply button and wait for the modal footer to appear."""
+
+    button = _easy_apply_button(page)
+    if button is None:
+        raise RuntimeError(
+            "This job has no visible Easy Apply button; it is likely an external "
+            "application and is not inspected here."
+        )
+
+    output_fn("Opening the Easy Apply modal...")
+    button.scroll_into_view_if_needed()
+    button.click()
+
+    # The modal is "open" once its footer (Next/Review/Submit) is visible. This
+    # is more reliable than waiting on a container selector, which can lock onto
+    # a hidden template dialog.
+    try:
+        page.get_by_role("button", name=_FOOTER).filter(
+            visible=True
+        ).first.wait_for(state="visible", timeout=20_000)
+    except Exception as exc:
+        _dump_open_failure(page, output_fn)
+        raise RuntimeError(
+            "Clicked Easy Apply but no modal footer (Next/Review/Submit) became "
+            "visible within 20s. A diagnostic screenshot and the visible button "
+            "names were logged above. LinkedIn may have shown a login/security "
+            "wall, a localized label this runner does not recognize, or changed "
+            "its modal markup."
+        ) from exc
+
+
+def walk_modal(
+    page: Page,
+    output_fn: Callable[[str], None] = print,
+) -> tuple[list[Form], list[str]]:
+    """Walk Easy Apply steps without submitting, collecting each step's form."""
+
+    forms: list[Form] = []
+    texts: list[str] = []
+    previous_text: str | None = None
+
+    for _ in range(_MAX_MODAL_STEPS):
+        modal = modal_root(page)
+        text = modal_text(page)
+        if text == previous_text:
+            break  # A click did not advance the modal; stop defensively.
+        form = page_to_form(page, root=modal)
+        forms.append(form)
+        texts.append(text)
+        previous_text = text
+        output_fn(
+            f"Step {len(forms)}: {form.step_label or 'unnamed'} "
+            f"({len(form.fields)} fields)"
+        )
+
+        # Submit/Next/Review live at page level (there is no collision: the job
+        # page itself has no such buttons), which is robust to the modal lacking
+        # role="dialog".
+        submit = page.get_by_role("button", name=_SUBMIT).filter(visible=True)
+        if submit.count():
+            output_fn("Reached the review step; stopping before submission.")
+            break
+
+        if not advance_modal(page, output_fn):
+            output_fn(
+                "Could not find an enabled Next/Review button; stopping. The "
+                "visible footer button labels were logged above."
+            )
+            break
+
+    return forms, texts
+
+
+def modal_root(page: Page) -> Locator:
+    """Return the Easy Apply modal container.
+
+    LinkedIn does not reliably expose ``role="dialog"`` on this modal, so we
+    anchor on the modal's title heading ("Apply to <company>") and climb to the
+    nearest ancestor that also contains a footer button. This scopes field and
+    text extraction to the modal and keeps page-wide controls (global search,
+    messaging, the premium-upsell panel) out of the results.
+    """
+
+    heading = page.get_by_role(
+        "heading", name=re.compile(r"apply to\b", re.IGNORECASE)
+    ).first
+    if heading.count():
+        box = heading.locator(
+            "xpath=ancestor::*[.//button["
+            "contains(normalize-space(.), 'Next')"
+            " or contains(normalize-space(.), 'Review')"
+            " or contains(normalize-space(.), 'Submit')"
+            " or contains(normalize-space(.), 'Continue')"
+            "]][1]"
+        )
+        if box.count():
+            return box.first
+
+    # Fallbacks: a role=dialog / artdeco-modal container if present.
+    footer = page.get_by_role("button", name=_FOOTER).filter(visible=True).first
+    if footer.count():
+        box = footer.locator(
+            "xpath=ancestor::*["
+            "@role='dialog'"
+            " or contains(concat(' ', normalize-space(@class), ' '),"
+            " ' artdeco-modal ')"
+            "][1]"
+        )
+        if box.count():
+            return box.first
+    for selector in ('[role="dialog"]:visible', '.artdeco-modal:visible'):
+        loc = page.locator(selector)
+        if loc.count():
+            return loc.last
+    return page.locator("body")
+
+
+def advance_modal(page: Page, output_fn: Callable[[str], None] = print) -> bool:
+    """Click Review or Next (never Submit); return whether a control was used."""
+
+    for pattern in (_REVIEW, _NEXT):
+        button = page.get_by_role("button", name=pattern).filter(visible=True)
+        for index in range(button.count()):
+            control = button.nth(index)
+            if control.is_enabled():
+                control.scroll_into_view_if_needed()
+                control.click()
+                _wait_for_modal_advance(page)
+                return True
+
+    _log_footer_buttons(page, output_fn)
+    return False
+
+
+def dismiss_modal(page: Page) -> None:
+    """Best-effort close without submitting; discard any draft prompt."""
+
+    try:
+        close = page.get_by_role(
+            "button", name=re.compile(r"dismiss|close|cerrar", re.IGNORECASE)
+        )
+        if close.count() and close.first.is_visible():
+            close.first.click()
+            page.wait_for_timeout(500)
+        discard = page.get_by_role("button", name=_DISCARD)
+        if discard.count() and discard.first.is_visible():
+            discard.first.click()
+    except Exception:
+        # The browser context often closes right after this; a stuck modal is
+        # harmless.
+        pass
+
+
+def modal_text(page: Page) -> str:
+    """Return the visible text scoped to the Easy Apply modal."""
+
+    target = modal_root(page)
+    try:
+        return target.inner_text(timeout=5_000)
+    except Exception:
+        return ""
+
+
+def detect_artifacts(forms: list[Form], texts: list[str]) -> dict[str, Any]:
+    """Map the collected Easy Apply fields and text to required artifacts."""
+
+    labels = [field.label for form in forms for field in form.fields]
+    has_file_field = any(
+        field.type == "file" for form in forms for field in form.fields
+    )
+    haystack = "\n".join([*labels, *texts])
+
+    cv_match = _CV_KEYWORDS.search(haystack)
+    cover_letter_match = _COVER_LETTER_KEYWORDS.search(haystack)
+    cv_signal = bool(cv_match) or has_file_field
+    cover_letter_signal = bool(cover_letter_match)
+
+    required: list[ArtifactType] = []
+    if cv_signal:
+        required.append("cv")
+    if cover_letter_signal:
+        required.append("cover_letter")
+
+    return {
+        "required_artifacts": required,
+        "signals": {
+            "cv_field_or_keyword": cv_signal,
+            "cover_letter_field_or_keyword": cover_letter_signal,
+            "has_file_upload_field": has_file_field,
+        },
+        "signal_sources": {
+            "cv_keyword": _match_context(haystack, cv_match),
+            "cover_letter_keyword": _match_context(haystack, cover_letter_match),
+        },
+    }
+
+
+def _easy_apply_button(page: Page) -> Locator | None:
+    """Return the visible Easy Apply control, preferring LinkedIn's class hook."""
+
+    candidates = [
+        page.locator("button.jobs-apply-button").filter(has_text=_EASY_APPLY),
+        page.locator("button.jobs-apply-button"),
+        page.get_by_role("button", name=_EASY_APPLY),
+    ]
+    for locator in candidates:
+        for index in range(locator.count()):
+            control = locator.nth(index)
+            if control.is_visible():
+                return control
+    return None
+
+
+def _wait_for_modal_advance(page: Page) -> None:
+    """Give the next step time to render before re-reading the modal."""
+
+    try:
+        page.wait_for_timeout(400)
+        page.wait_for_load_state("networkidle", timeout=4_000)
+    except Exception:
+        page.wait_for_timeout(1_200)
+
+
+def _log_footer_buttons(page: Page, output_fn: Callable[[str], None]) -> None:
+    buttons = page.get_by_role("button", name=_FOOTER)
+    labels: list[str] = []
+    try:
+        for index in range(min(buttons.count(), 20)):
+            control = buttons.nth(index)
+            if control.is_visible():
+                text = (control.inner_text(timeout=1_000) or "").strip()
+                state = "enabled" if control.is_enabled() else "disabled"
+                if text:
+                    labels.append(f"{text.replace(chr(10), ' ')} [{state}]")
+    except Exception:
+        pass
+    if labels:
+        output_fn("Footer buttons: " + "; ".join(labels))
+
+
+def _dump_open_failure(page: Page, output_fn: Callable[[str], None]) -> None:
+    """Log the visible buttons and a screenshot to help diagnose a stuck open."""
+
+    try:
+        names: list[str] = []
+        buttons = page.get_by_role("button")
+        for index in range(min(buttons.count(), 40)):
+            control = buttons.nth(index)
+            if control.is_visible():
+                label = (control.inner_text(timeout=1_000) or "").strip()
+                if label:
+                    names.append(label.replace("\n", " "))
+        if names:
+            output_fn(
+                "Visible buttons on the page: " + ", ".join(sorted(set(names)))
+            )
+    except Exception:
+        pass
+
+    try:
+        shot = Path(tempfile.gettempdir()) / _OPEN_FAILURE_SCREENSHOT
+        page.screenshot(path=str(shot), full_page=True)
+        output_fn(f"Saved a diagnostic screenshot to {shot}")
+    except Exception:
+        pass
+
+
+def _match_context(haystack: str, match: re.Match[str] | None) -> str | None:
+    """Return a short snippet around a regex match to explain a signal."""
+
+    if match is None:
+        return None
+    start = max(match.start() - 30, 0)
+    end = min(match.end() + 30, len(haystack))
+    snippet = haystack[start:end].replace("\n", " ").strip()
+    return f"…{snippet}…"

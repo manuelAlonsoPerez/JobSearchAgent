@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Callable, Mapping
+from typing import TYPE_CHECKING, Any
 
 from ..jev import Jev
 from ..models import ArtifactType, JobState
+
+if TYPE_CHECKING:
+    from playwright.sync_api import Page
 
 
 V1_REQUIRED_ARTIFACTS: tuple[ArtifactType, ...] = ("cv", "cover_letter")
@@ -67,3 +70,22 @@ def decide_requirements(
             client.close()
 
     return {"required_artifacts": required}
+
+
+def decide_requirements_from_modal(
+    page: Page,
+    *,
+    output_fn: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Decide required artifacts from the live Easy Apply modal on ``page``.
+
+    Unlike :func:`decide_requirements` (which applies the fixed v1 policy to a
+    persisted ``JobState``), this inspects the actual Easy Apply form and only
+    requires the artifacts the form asks for (e.g. ``["cv"]`` when a resume is
+    the sole input). ``page`` must already be authenticated and on the job page.
+    Returns ``required_artifacts`` plus per-step fields and detection signals.
+    """
+
+    from .easy_apply import inspect_modal
+
+    return inspect_modal(page, output_fn=output_fn)

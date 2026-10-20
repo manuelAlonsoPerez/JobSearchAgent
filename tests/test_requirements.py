@@ -9,11 +9,9 @@ from typing import Any
 
 from jobsearchagent.database import upsert_job
 from jobsearchagent.models import Form, FormField, JobState
+from jobsearchagent.triage.easy_apply import detect_artifacts
 from jobsearchagent.triage.requirements import decide_requirements
-from jobsearchagent.triage.smoke_requirements import (
-    _detect_artifacts,
-    evaluate_persisted_job,
-)
+from jobsearchagent.triage.smoke_requirements import evaluate_persisted_job
 
 
 class StubJev:
@@ -131,7 +129,7 @@ class BrowserDetectionTests(unittest.TestCase):
             ),
         ]
 
-        detection = _detect_artifacts(forms, ["Contact info", "Resume* Upload resume"])
+        detection = detect_artifacts(forms, ["Contact info", "Resume* Upload resume"])
 
         self.assertEqual(detection["required_artifacts"], ["cv"])
         self.assertTrue(detection["signals"]["cv_field_or_keyword"])
@@ -153,7 +151,7 @@ class BrowserDetectionTests(unittest.TestCase):
             ),
         ]
 
-        detection = _detect_artifacts(forms, ["Resume", "Cover letter"])
+        detection = detect_artifacts(forms, ["Resume", "Cover letter"])
 
         self.assertEqual(
             detection["required_artifacts"],

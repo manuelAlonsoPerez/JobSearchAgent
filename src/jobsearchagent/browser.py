@@ -73,15 +73,22 @@ def a11y_text(page: Page) -> str:
     return body.inner_text(timeout=10_000)
 
 
-def page_to_form(page: Page, url: str | None = None) -> Form:
-    """Normalize the visible dialog/form controls on the current page."""
+def page_to_form(page: Page, url: str | None = None, root: Any = None) -> Form:
+    """Normalize form controls on the page, or within an explicit ``root``.
 
-    dialog = page.locator('[role="dialog"]:visible').last
-    if dialog.count():
-        root = dialog
+    ``root`` may be a Playwright ``Locator`` scoping extraction to one container
+    (e.g. a modal). When omitted, the visible dialog/form is auto-detected.
+    """
+
+    if root is not None:
+        pass
     else:
-        visible_form = page.locator("form:visible").last
-        root = visible_form if visible_form.count() else page.locator("body")
+        dialog = page.locator('[role="dialog"]:visible').last
+        if dialog.count():
+            root = dialog
+        else:
+            visible_form = page.locator("form:visible").last
+            root = visible_form if visible_form.count() else page.locator("body")
 
     raw_fields: list[dict[str, Any]] = root.evaluate(
         """

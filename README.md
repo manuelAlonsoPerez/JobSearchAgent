@@ -44,6 +44,8 @@ Playwright browser session, local Ollama models, JEV typed decisions, and SQLite
 - Avoids preparing artifacts for rejected or external jobs.
 - Performs no additional model call for the fixed v1 requirements.
 - Provides independent JEV `noul` gates for optional future artifacts.
+- Offers a browser inspection mode that walks the live Easy Apply form and
+  requires a `cover_letter` only when the form exposes such a field.
 
 Manually test A3 with a persisted LinkedIn URL or job ID:
 
@@ -61,6 +63,19 @@ PYTHONPATH=src python -m jobsearchagent.triage.smoke_requirements \
   4471047498 \
   --force-accepted-easy-apply
 ```
+
+To detect the required artifacts from the **live** Easy Apply form instead of the deterministic
+policy, add `--browser`. It opens the modal, walks each step without submitting, and reports which
+artifacts the form actually asks for:
+
+```bash
+PYTHONPATH=src python -m jobsearchagent.triage.smoke_requirements \
+  https://www.linkedin.com/jobs/view/4471047498/ \
+  --browser
+```
+
+A job whose Easy Apply flow only uploads a resume reports `["cv"]`; a `cover_letter` is added only
+when the form exposes a corresponding field. The runner never clicks **Submit application**.
 
 ### Production LinkedIn agent
 

@@ -8,9 +8,12 @@ from pathlib import Path
 from typing import Any
 
 from jobsearchagent.database import upsert_job
-from jobsearchagent.models import JobState
+from jobsearchagent.models import Form, FormField, JobState
 from jobsearchagent.triage.requirements import decide_requirements
-from jobsearchagent.triage.smoke_requirements import evaluate_persisted_job
+from jobsearchagent.triage.smoke_requirements import (
+    _detect_artifacts,
+    evaluate_persisted_job,
+)
 
 
 class StubJev:
@@ -106,6 +109,56 @@ class RequirementsTests(unittest.TestCase):
             ["cv", "cover_letter"],
         )
         self.assertTrue(forced["smoke_override_applied"])
+
+
+class BrowserDetectionTests(unittest.TestCase):
+    def test_resume_only_easy_apply_requires_just_a_cv(self) -> None:
+        forms = [
+            Form(
+                url="https://www.linkedin.com/jobs/view/1/",
+                step_label="Contact info",
+                fields=[
+                    FormField(id="email", label="Email address", type="email"),
+                    FormField(id="phone", label="Mobile phone number", type="text"),
+                ],
+            ),
+            Form(
+                url="https://www.linkedin.com/jobs/view/1/",
+                step_label="Resume",
+                fields=[
+                    FormField(id="resume", label="Resume", type="file"),
+                ],
+            ),
+        ]
+
+        detection = _detect_artifacts(forms, ["Contact info", "Resume* Upload resume"])
+
+        self.assertEqual(detection["required_artifacts"], ["cv"])
+        self.assertTrue(detection["signals"]["cv_field_or_keyword"])
+        self.assertFalse(detection["signals"]["cover_letter_field_or_keyword"])
+
+    def test_cover_letter_field_adds_cover_letter_artifact(self) -> None:
+        forms = [
+            Form(
+                url="https://www.linkedin.com/jobs/view/2/",
+                step_label="Resume",
+                fields=[
+                    FormField(id="resume", label="Resume", type="file"),
+                    FormField(
+                        id="cover",
+                        label="Cover letter",
+                        type="textarea",
+                    ),
+                ],
+            ),
+        ]
+
+        detection = _detect_artifacts(forms, ["Resume", "Cover letter"])
+
+        self.assertEqual(
+            detection["required_artifacts"],
+            ["cv", "cover_letter"],
+        )
 
 
 if __name__ == "__main__":

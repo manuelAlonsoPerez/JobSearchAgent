@@ -175,13 +175,26 @@ class LinkedInDiscovery:
 
     @staticmethod
     def _navigate(page: Page, url: str) -> None:
-        try:
-            page.goto(url, wait_until="commit", timeout=60_000)
-            page.locator("body").wait_for(state="attached", timeout=15_000)
-        except PlaywrightTimeoutError as exc:
-            raise RuntimeError(
-                f"LinkedIn did not produce a usable document while loading: {url}"
-            ) from exc
+        last_error: PlaywrightTimeoutError | None = None
+        for attempt in range(2):
+            try:
+                page.goto(url, wait_until="commit", timeout=60_000)
+                page.wait_for_function(
+                    "() => document.body !== null",
+                    timeout=30_000,
+                )
+                return
+            except PlaywrightTimeoutError as exc:
+                last_error = exc
+                if page.locator("body").count():
+                    return
+                if attempt == 0:
+                    page.wait_for_timeout(1_000)
+
+        raise RuntimeError(
+            "LinkedIn did not produce a usable document after two attempts "
+            f"while loading: {url}"
+        ) from last_error
 
     @staticmethod
     def _collect_job_urls(page: Page, limit: int) -> list[str]:

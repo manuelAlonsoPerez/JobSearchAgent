@@ -30,6 +30,37 @@ def _profile_selection_option(profile: Mapping[str, Any]) -> str:
     )
 
 
+def _profile_evaluation_context(profile: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep the one-call prompt grounded without sending full CV histories."""
+
+    compact_skills: list[dict[str, Any]] = []
+    for skill in profile.get("skills", []):
+        if not isinstance(skill, Mapping):
+            continue
+        compact_skills.append(
+            {
+                key: skill[key]
+                for key in ("name", "aliases", "level", "years", "last_used")
+                if key in skill
+            }
+        )
+
+    return {
+        key: profile[key]
+        for key in (
+            "title",
+            "summary",
+            "years_relevant",
+            "years_in_core_skill",
+            "not_claimed",
+            "certifications",
+            "matching_titles",
+            "weak_fit",
+        )
+        if key in profile
+    } | {"skills": compact_skills}
+
+
 def triage(
     state: JobState,
     *,
@@ -58,38 +89,6 @@ def triage(
     client = jev or Jev()
     owns_client = jev is None
     try:
-        output("JEV 1/2: selecting exactly one work profile...")
-        profile_answers = client.ask(
-            state={
-                "job": {
-                    "title": state.get("title", ""),
-                    "location": state.get("location", ""),
-                    "description": state.get("raw_description", "")[:4_000],
-                },
-                "profiles": profile_options,
-            },
-            questions={
-                "profile": {
-                    "type": "choice",
-                    "instructions": (
-                        "Select exactly one candidate profile that best matches "
-                        "this job. Never combine skills from different profiles."
-                    ),
-                    "criteria": profile_options,
-                },
-            },
-        )
-        profile_answer = profile_answers.get("profile")
-        if not isinstance(profile_answer, Mapping):
-            raise ValueError("JEV returned no typed profile decision")
-        profile_id = profile_answer.get(
-            "choice",
-            profile_answer.get("answer"),
-        )
-        profile = profiles.get(profile_id)
-        if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
-            raise ValueError(f"JEV selected an unknown profile: {profile_id!r}")
-
         concrete_locations = [
             location
             for location in selected_locations
@@ -105,7 +104,7 @@ def triage(
             location.casefold() == "remote" for location in selected_locations
         )
 
-        output(f"JEV 2/2: evaluating {profile_id} fit and outcome...")
+        output("JEV: selecting profile and evaluating outcome and fit...")
         answers = client.ask(
             state={
                 "job": {
@@ -141,10 +140,23 @@ def triage(
                     ),
                 },
                 "match_rules": config.get("match_rules", {}),
-                "selected_profile_id": profile_id,
-                "selected_profile": profile,
+                "profile_candidates": {
+                    str(profile_id): _profile_evaluation_context(profile)
+                    for profile_id, profile in profiles.items()
+                    if isinstance(profile, Mapping)
+                },
             },
             questions={
+                "profile": {
+                    "type": "choice",
+                    "instructions": (
+                        "Select exactly one candidate profile that best matches "
+                        "the job title and core responsibilities. Never combine "
+                        "skills from different profiles. The outcome and fit "
+                        "answers must evaluate only this selected profile."
+                    ),
+                    "criteria": profile_options,
+                },
                 "location_eligibility": {
                     "type": "choice",
                     "instructions": (
@@ -172,8 +184,10 @@ def triage(
                     "type": "choice",
                     "instructions": (
                         "Decide the candidate's non-location outcome using only "
-                        "selected_profile and match_rules. Ignore geographic "
-                        "eligibility because location_eligibility handles it."
+                        "the profile selected by the profile answer and match_rules. "
+                        "Never borrow evidence from another profile. Ignore "
+                        "geographic eligibility because location_eligibility "
+                        "handles it."
                     ),
                     "criteria": {
                         "accept": (
@@ -197,6 +211,7 @@ def triage(
                 "fit": {
                     "type": "score",
                     "instructions": (
+                        "Score only the profile selected by the profile answer. "
                         "Weight core-stack and minimum-experience evidence most "
                         "heavily. Reduce fit for missing secondary skills without "
                         "treating those gaps as rejection."
@@ -212,6 +227,17 @@ def triage(
     finally:
         if owns_client:
             client.close()
+
+    profile_answer = answers.get("profile")
+    if not isinstance(profile_answer, Mapping):
+        raise ValueError("JEV returned no typed profile decision")
+    profile_id = profile_answer.get(
+        "choice",
+        profile_answer.get("answer"),
+    )
+    profile = profiles.get(profile_id)
+    if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
+        raise ValueError(f"JEV selected an unknown profile: {profile_id!r}")
 
     location_answer = answers.get("location_eligibility", {})
     skill_answer = answers.get("outcome", {})

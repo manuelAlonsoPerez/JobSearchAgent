@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -37,6 +36,7 @@ from ..utils.text import (
     clean_job_text,
     extract_linkedin_job_id,
 )
+from .linkedin import LinkedInDiscovery
 
 if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
@@ -247,219 +247,6 @@ class LinkedInScraperSmokeTest:
             },
         }
 
-    def _legacy_decide(self, job: ScrapedJob) -> dict[str, Any]:
-        """Previous inline policy retained temporarily for output compatibility."""
-
-        profiles = self.profile_config.get("work_profiles", {})
-        if not isinstance(profiles, Mapping) or not profiles:
-            raise ValueError("No work profiles are configured")
-
-        profile_options = {
-            str(profile_id): self._profile_selection_option(profile)
-            for profile_id, profile in profiles.items()
-            if isinstance(profile, Mapping)
-        }
-        self.output(
-            "  JEV 1/2: selecting exactly one work profile "
-            "(local CPU inference may take several minutes)..."
-        )
-        started = time.monotonic()
-        profile_answers = self.jev.ask(
-            state={
-                "job": {
-                    "title": job.title,
-                    "location": job.location,
-                    "description": job.description[:4_000],
-                },
-                "profiles": profile_options,
-            },
-            questions={
-                "profile": {
-                    "type": "choice",
-                    "instructions": (
-                        "Select exactly one candidate profile that best matches "
-                        "this job. Never combine skills from different profiles."
-                    ),
-                    "criteria": profile_options,
-                },
-            },
-        )
-        profile_answer = profile_answers.get("profile")
-        if not isinstance(profile_answer, Mapping):
-            raise ValueError("JEV returned no typed profile decision")
-        selected_profile_id = profile_answer.get(
-            "choice",
-            profile_answer.get("answer"),
-        )
-        selected_profile = profiles.get(selected_profile_id)
-        if not isinstance(selected_profile_id, str) or not isinstance(
-            selected_profile,
-            Mapping,
-        ):
-            raise ValueError(
-                f"JEV selected an unknown profile: {selected_profile_id!r}"
-            )
-
-        self.output(
-            f"  Profile selection finished in {time.monotonic() - started:.1f}s: "
-            f"{selected_profile_id}."
-        )
-        self.output(
-            "  JEV 2/2: deciding outcome and fit "
-            "(local CPU inference may take several minutes)..."
-        )
-        started = time.monotonic()
-        concrete_locations = [
-            location
-            for location in self.locations
-            if location.casefold() != "remote"
-        ]
-        configured_locations = ", ".join(self.locations)
-        concrete_location_scope = (
-            ", ".join(concrete_locations)
-            if concrete_locations
-            else "the configured eligible locations"
-        )
-        unrestricted_remote_allowed = any(
-            location.casefold() == "remote" for location in self.locations
-        )
-        state = {
-            "job": {
-                "title": job.title,
-                "company": job.company,
-                "location": job.location,
-                "description": job.description[:10_000],
-                "easy_apply": job.easy_apply,
-            },
-            "candidate_shared": self.profile_config.get("shared", {}),
-            "location_policy": {
-                "authoritative": True,
-                "configured_locations": self.locations,
-                "unrestricted_remote_allowed": unrestricted_remote_allowed,
-                "eligible": (
-                    "The job matches a configured location, explicitly permits "
-                    f"working from {concrete_location_scope}, has a wider scope "
-                    f"that includes {concrete_location_scope}, or is genuinely "
-                    "worldwide/unrestricted remote when Remote is configured."
-                ),
-                "ineligible": (
-                    "The job requires residence, work authorization, or remote "
-                    "work in a country or region that excludes every configured "
-                    "concrete location."
-                ),
-                "unknown": (
-                    "The job says remote but does not establish whether someone "
-                    "in a configured concrete location may perform it."
-                ),
-                "precedence": (
-                    "Use this runtime policy instead of older location preferences "
-                    "inside candidate_shared."
-                ),
-            },
-            "match_rules": self.profile_config.get("match_rules", {}),
-            "selected_profile_id": selected_profile_id,
-            "selected_profile": selected_profile,
-        }
-        outcome_answers = self.jev.ask(
-            state=state,
-            questions={
-                "location_eligibility": {
-                    "type": "choice",
-                    "instructions": (
-                        "Classify location eligibility using location_policy. "
-                        "Remote alone is not enough when its geographic scope is "
-                        "restricted or unstated."
-                    ),
-                    "criteria": {
-                        "eligible": (
-                            f"Matches {configured_locations}, includes a configured "
-                            "concrete location, or is genuinely worldwide/unrestricted "
-                            "remote when Remote is configured."
-                        ),
-                        "ineligible": (
-                            "Confirmed geographic, residence, or work restriction "
-                            "that excludes every configured concrete location."
-                        ),
-                        "unknown": (
-                            "Remote scope or eligibility for the configured concrete "
-                            "locations is not stated clearly enough."
-                        ),
-                    },
-                },
-                "outcome": {
-                    "type": "choice",
-                    "instructions": (
-                        "Decide the candidate's non-location outcome using only "
-                        "selected_profile and match_rules. Ignore geographic "
-                        "eligibility because location_eligibility handles it."
-                    ),
-                    "criteria": {
-                        "accept": (
-                            "The role's core stack and explicit minimum relevant "
-                            "experience match the selected profile, and no confirmed "
-                            "hard blocker exists. Missing secondary skills are allowed."
-                        ),
-                        "reject": (
-                            "At least one hard blocker is confirmed by explicit job "
-                            "and profile evidence: a core-stack mismatch, unmet minimum "
-                            "experience, primary weak-fit focus, or confirmed mandatory "
-                            "constraint. Never reject for secondary-skill gaps alone."
-                        ),
-                        "needs_confirmation": (
-                            "The core role may fit, but a possible hard blocker depends "
-                            "on an unknown language grade, residence, authorization, "
-                            "schedule, experience classification, or other fact."
-                        ),
-                    },
-                },
-                "fit": {
-                    "type": "score",
-                    "instructions": (
-                        "Score the candidate's fit using only selected_profile and "
-                        "the job's qualifications. Weight core-stack and minimum-"
-                        "experience evidence most heavily. Reduce fit for missing "
-                        "secondary skills without treating those gaps as rejection."
-                    ),
-                    "criteria": [
-                        "Poor: hard mismatches dominate",
-                        "Partial: some relevant evidence but important gaps",
-                        "Strong: required qualifications are well supported",
-                    ],
-                },
-            },
-        )
-        self.output(
-            f"  Outcome and fit finished in {time.monotonic() - started:.1f}s."
-        )
-        location_answer = outcome_answers.get("location_eligibility", {})
-        jev_outcome = outcome_answers.get("outcome", {})
-        location_choice = (
-            location_answer.get("choice")
-            if isinstance(location_answer, Mapping)
-            else None
-        )
-        skill_choice = (
-            jev_outcome.get("choice") if isinstance(jev_outcome, Mapping) else None
-        )
-        if skill_choice == "reject" or location_choice == "ineligible":
-            policy_choice = "reject"
-        elif location_choice == "unknown":
-            policy_choice = "needs_confirmation"
-        else:
-            policy_choice = skill_choice
-
-        return {
-            "profile": dict(profile_answer),
-            **outcome_answers,
-            "jev_non_location_outcome": jev_outcome,
-            "outcome": {
-                "type": "policy",
-                "choice": policy_choice,
-                "location_eligibility": location_choice,
-                "non_location_choice": skill_choice,
-            },
-        }
-
     def print_scraped_job(
         self,
         index: int,
@@ -642,15 +429,9 @@ class LinkedInScraperSmokeTest:
 
     @staticmethod
     def _navigate(page: Page, url: str) -> None:
-        """Navigate without waiting for LinkedIn's long-lived page resources."""
+        """Use the production LinkedIn navigation and retry policy."""
 
-        try:
-            page.goto(url, wait_until="commit", timeout=60_000)
-            page.locator("body").wait_for(state="attached", timeout=15_000)
-        except PlaywrightTimeoutError as exc:
-            raise RuntimeError(
-                f"LinkedIn did not produce a usable document while loading: {url}"
-            ) from exc
+        LinkedInDiscovery._navigate(page, url)
 
     @staticmethod
     def _expand_description(page: Page) -> None:
@@ -743,27 +524,6 @@ class LinkedInScraperSmokeTest:
             return ""
         text = metadata.inner_text(timeout=5_000).strip()
         return text.split("·", 1)[0].strip()
-
-    @staticmethod
-    def _profile_selection_option(profile: Mapping[str, Any]) -> str:
-        """Keep profile selection small; full facts are sent only after selection."""
-
-        skills = profile.get("skills", [])
-        skill_names = [
-            str(skill.get("name"))
-            for skill in skills
-            if isinstance(skill, Mapping) and skill.get("name")
-        ]
-        return json.dumps(
-            {
-                "title": profile.get("title"),
-                "summary": profile.get("summary"),
-                "years_relevant": profile.get("years_relevant"),
-                "skills": skill_names,
-                "matching_titles": profile.get("matching_titles", []),
-            },
-            ensure_ascii=False,
-        )
 
     def _continue(self) -> bool:
         answer = self.input("\nAnalyze the next job offer? [y/N]: ")

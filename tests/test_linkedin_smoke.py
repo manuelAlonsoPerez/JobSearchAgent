@@ -28,14 +28,11 @@ class StubJev:
 
     def ask(self, state: Any, questions: Any) -> dict[str, Any]:
         self.requests.append({"state": state, "questions": questions})
-        if "profile" in questions:
-            return {
-                "profile": {
-                    "choice": "servicenow-developer",
-                    "confidence": 0.9,
-                },
-            }
         return {
+            "profile": {
+                "choice": "servicenow-developer",
+                "confidence": 0.9,
+            },
             "location_eligibility": {
                 "choice": self.location_choice,
                 "confidence": 0.9,
@@ -105,38 +102,34 @@ class LinkedInScraperSmokeTests(unittest.TestCase):
         answers = scraper.decide(job)
 
         self.assertEqual(answers["outcome"]["choice"], "accept")
-        self.assertEqual(len(jev.requests), 2)
+        self.assertEqual(len(jev.requests), 1)
         self.assertEqual(
             set(jev.requests[0]["questions"]),
-            {"profile"},
-        )
-        self.assertEqual(
-            set(jev.requests[1]["questions"]),
-            {"location_eligibility", "outcome", "fit"},
+            {"profile", "location_eligibility", "outcome", "fit"},
         )
         self.assertIn(
             "servicenow-developer",
             jev.requests[0]["questions"]["profile"]["criteria"],
         )
-        self.assertEqual(
-            jev.requests[1]["state"]["selected_profile_id"],
+        self.assertIn(
             "servicenow-developer",
+            jev.requests[0]["state"]["profile_candidates"],
         )
         self.assertTrue(
-            jev.requests[1]["state"]["location_policy"]["authoritative"]
+            jev.requests[0]["state"]["location_policy"]["authoritative"]
         )
         self.assertEqual(
-            jev.requests[1]["state"]["location_policy"]["configured_locations"],
+            jev.requests[0]["state"]["location_policy"]["configured_locations"],
             ["NORWAY", "REMOTE"],
         )
-        outcome_criteria = jev.requests[1]["questions"]["outcome"]["criteria"]
+        outcome_criteria = jev.requests[0]["questions"]["outcome"]["criteria"]
         self.assertIn("core stack", outcome_criteria["accept"])
         self.assertIn("secondary-skill gaps", outcome_criteria["reject"])
         self.assertIn(
             "secondary skills",
-            jev.requests[1]["questions"]["fit"]["instructions"],
+            jev.requests[0]["questions"]["fit"]["instructions"],
         )
-        hard_blockers = jev.requests[1]["state"]["match_rules"]["definitions"][
+        hard_blockers = jev.requests[0]["state"]["match_rules"]["definitions"][
             "confirmed_hard_blockers"
         ]
         self.assertTrue(hard_blockers)
@@ -209,7 +202,7 @@ class LinkedInScraperSmokeTests(unittest.TestCase):
 
         scraper.decide(job)
 
-        request = jev.requests[1]
+        request = jev.requests[0]
         policy = request["state"]["location_policy"]
         self.assertEqual(
             policy["configured_locations"],

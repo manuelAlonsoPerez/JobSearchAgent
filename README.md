@@ -3,6 +3,70 @@
 JobSearchAgent is a local, LinkedIn-focused job discovery and triage system. It uses a persistent
 Playwright browser session, local Ollama models, JEV typed decisions, and SQLite persistence.
 
+## Requirements
+
+- **Python 3.11+** (SQLite ships with Python — no database server needed).
+- **Ollama 0.40.4+** running locally ([ollama.com/download](https://ollama.com/download)), exposing
+  the JEV `POST /v1/systemone` endpoint.
+- A LinkedIn account (login is always completed manually in the browser; credentials are never read
+  or stored by the app).
+
+## Installation
+
+From the repository root:
+
+```bash
+# 1. Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate          # Windows PowerShell: .\.venv\Scripts\Activate.ps1
+
+# 2. Install Python dependencies
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+# 3. Install the Playwright Chromium runtime
+python -m playwright install chromium
+
+# 4. Create the local environment file (safe defaults, Git-ignored)
+cp .env.example .env
+
+# 5. Start Ollama (separate terminal) and pull the configured models
+ollama serve                       # if not already running
+ollama pull nimble                 # JEV decision model
+ollama pull qwen2.5:7b             # generative model (writers/apply)
+```
+
+`.env` controls models, the SQLite path, the Chromium profile path, rate limits, and
+`JOB_LOCATIONS`. The defaults create `~/.jobsearchagent/jobsearch.db` and
+`~/.jobsearchagent/chrome-profile` on first run. Keep `DRY_RUN=true` while developing. See
+`setup.md` for the full, step-by-step setup and browser-login notes.
+
+## Quickstart
+
+With `.venv` active and Ollama running:
+
+```bash
+# Verify the setup (should pass)
+PYTHONPATH=src python -m unittest discover -s tests -v
+
+# Confirm Ollama is reachable
+curl http://localhost:11434/api/tags
+
+# Run the discovery-and-triage agent (does NOT submit applications)
+PYTHONPATH=src python -m jobsearchagent.linkedin_agent \
+  --query developer \
+  --max-jobs 10 \
+  --location Norway \
+  --location Remote
+```
+
+On the first run, complete LinkedIn login in the Chromium window when prompted, then return to the
+terminal and press Enter. Locations default to `JOB_LOCATIONS` in `.env`; repeat `--location` to
+override them for one run. On CPU-only hardware the single JEV triage call can take several minutes
+per job — the agent prints heartbeat progress while it works. To re-analyze jobs already in the
+database, clear them first with `python -m scripts.delete_jobs` (see
+[Delete stored jobs](#delete-stored-jobs)).
+
 ## Functional parts developed so far
 
 ### Configuration and shared state
@@ -31,9 +95,12 @@ Playwright browser session, local Ollama models, JEV typed decisions, and SQLite
 
 - Selects exactly one candidate work profile.
 - Evaluates whether the configured locations permit applying.
-- Requires the core stack and explicit minimum experience to match.
-- Reduces fit for missing secondary skills without rejecting for those gaps alone.
-- Rejects only confirmed hard blockers.
+- Accepts when a good part of the core stack is covered, or when uncovered core technologies are
+  closely adjacent/learnable given the candidate's multi-year breadth.
+- Reduces fit for missing secondary skills (and a minority of adjacent core gaps) without rejecting
+  for those gaps alone.
+- Rejects only confirmed hard blockers (most of the core absent and not adjacent, a confirmed
+  constraint, or experience clearly far below an explicit minimum).
 - Returns `accept`, `reject`, or `needs_confirmation` with a fit score.
 
 ### Artifact requirements

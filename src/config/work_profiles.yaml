@@ -11,22 +11,35 @@ match_rules:
     secondary_skills: >
       Supporting, preferred, nice-to-have, or incidental technologies that do
       not define the role.
+    substantial_core_coverage: >
+      The selected profile already demonstrates a good part of the core stack
+      (roughly half or more of the defining technologies/responsibilities),
+      even if some core items are missing.
+    adjacent_skills: >
+      Core technologies the profile does not list but that are closely related
+      to skills it does demonstrate (same language, framework family, paradigm,
+      or ecosystem) and that the candidate could reasonably pick up on the job.
+      The candidate has ~8 years across many technologies and has repeatedly
+      learned new stacks after starting a role, so adjacent core gaps are
+      normally bridgeable rather than disqualifying. Judging adjacency never
+      means the profile possesses the skill; a skill not on the profile is
+      still not claimed in any artifact.
     confirmed_hard_blockers:
-      - A core-stack skill is explicitly absent, not_claimed, too old for a stated current-depth requirement, or below a stated minimum.
-      - The profile's relevant experience is below an explicit minimum required for the role or its core stack.
+      - Most of the core stack is absent from the profile AND the missing technologies are not adjacent_skills, so the role is not reasonably learnable on the job.
+      - A core-stack technology is explicitly not_claimed, or the profile's relevant experience is clearly and substantially below an explicit minimum required for the role.
       - The role's primary focus matches a weak_fit entry rather than the profile's core work.
       - A mandatory credential, degree, language, work-authorization, schedule, or other constraint is confirmed unmet.
   steps:
     - Select the one profile whose matching_titles best fits the offer title. Do not mix skills from two profiles.
     - Identify the offer's core stack separately from its secondary skills before deciding the outcome.
     - Compare named skills to that profile's skills, case-insensitively, including aliases. A skill with no record is missing, but a missing secondary skill is not a hard blocker.
-    - Require the core stack and any explicit minimum relevant experience to match.
+    - Require either substantial_core_coverage or that the uncovered core technologies are adjacent_skills, together with any explicit minimum relevant experience being broadly met.
     - Use the skill's years and last_used, not the career total, when the offer names a technology.
     - Treat a skill with level older as a blocker only when it is in the core stack and the offer explicitly requires current or senior depth in it.
-    - Missing secondary skills reduce the fit score but never cause rejection by themselves.
-    - Reject only when at least one confirmed_hard_blockers condition is supported by explicit offer and profile evidence.
+    - Missing secondary skills reduce the fit score but never cause rejection by themselves. A minority of missing core skills that are adjacent_skills also do not cause rejection.
+    - Reject only when at least one confirmed_hard_blockers condition is supported by explicit offer and profile evidence. Prefer accept, or needs_confirmation, over reject whenever core coverage is partial but meaningful and transferable experience bridges the remaining gap.
     - Return needs_confirmation when a possible hard blocker cannot be confirmed, including an unknown CEFR grade, spoken-language grade such as "alto", numeric English test score, residence requirement, work authorization, or fixed hybrid schedule. A passed TOEFL iBT that met the University of Oslo master's requirement satisfies a plain English requirement. The score is not remembered, so do not treat it as B2, C1, or any number.
-    - Accept when the core stack and explicit minimum experience match and there is no confirmed hard blocker. Secondary gaps remain reflected in fit.
+    - Accept when substantial_core_coverage holds or the remaining core technologies are adjacent_skills, the explicit minimum experience is broadly met, and there is no confirmed hard blocker. Secondary and adjacent gaps remain reflected in fit.
 
 shared:
   candidate:

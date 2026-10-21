@@ -7,7 +7,10 @@ from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import (
+    Error as PlaywrightError,
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 from ..browser import session
 from ..config import get_settings, linkedin_search_url, load_searches
@@ -88,13 +91,17 @@ class LinkedInDiscovery:
                 continue
             try:
                 state = self._scrape_job(page, url)
-            except (PlaywrightTimeoutError, RuntimeError) as exc:
+            except (PlaywrightError, RuntimeError) as exc:
                 self.output(f"Could not read {url}: {exc}")
                 continue
             if self._title_is_excluded(str(state.get("title", ""))):
                 continue
             upsert_job(state)
             jobs.append(state)
+            self.output(
+                f"  Found [{len(jobs)}/{limit}]: "
+                f"{str(state.get('title', '')).strip()[:70]}"
+            )
             if len(jobs) >= limit:
                 break
         return jobs
@@ -175,8 +182,9 @@ class LinkedInDiscovery:
 
     @staticmethod
     def _navigate(page: Page, url: str) -> None:
-        last_error: PlaywrightTimeoutError | None = None
-        for attempt in range(2):
+        last_error: PlaywrightError | None = None
+        attempts = 3
+        for attempt in range(attempts):
             try:
                 page.goto(url, wait_until="commit", timeout=60_000)
                 page.wait_for_function(
@@ -185,15 +193,21 @@ class LinkedInDiscovery:
                 )
                 return
             except PlaywrightTimeoutError as exc:
+                # Slow LinkedIn: if the document attached, proceed anyway.
                 last_error = exc
                 if page.locator("body").count():
                     return
-                if attempt == 0:
-                    page.wait_for_timeout(1_000)
+            except PlaywrightError as exc:
+                # Transient network blips (ERR_NETWORK_CHANGED,
+                # ERR_CONNECTION_RESET, ERR_ABORTED, ...) are retryable; do not
+                # trust a stale body from the previous page here.
+                last_error = exc
+            if attempt < attempts - 1:
+                page.wait_for_timeout(1_500 * (attempt + 1))
 
         raise RuntimeError(
-            "LinkedIn did not produce a usable document after two attempts "
-            f"while loading: {url}"
+            f"LinkedIn did not produce a usable document after {attempts} "
+            f"attempts while loading: {url}"
         ) from last_error
 
     @staticmethod

@@ -10,7 +10,10 @@ from typing import Any
 from unittest.mock import MagicMock
 from urllib.parse import parse_qs, urlsplit
 
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import (
+    Error as PlaywrightError,
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 from jobsearchagent.database import (
     add_to_review,
@@ -163,7 +166,21 @@ class DiscoveryTests(unittest.TestCase):
         LinkedInDiscovery._navigate(page, "https://www.linkedin.com/feed/")
 
         self.assertEqual(page.goto.call_count, 2)
-        page.wait_for_timeout.assert_called_once_with(1_000)
+        page.wait_for_timeout.assert_called_once_with(1_500)
+
+    def test_navigation_retries_on_transient_network_error(self) -> None:
+        page = MagicMock()
+        page.goto.side_effect = [
+            PlaywrightError("net::ERR_NETWORK_CHANGED"),
+            None,
+        ]
+        page.wait_for_function.return_value = None
+        page.locator.return_value.count.return_value = 0
+
+        LinkedInDiscovery._navigate(page, "https://www.linkedin.com/jobs/view/1/")
+
+        self.assertEqual(page.goto.call_count, 2)
+        page.wait_for_timeout.assert_called_once_with(1_500)
 
     def test_search_url_supports_linkedin_result_pages(self) -> None:
         query = parse_qs(

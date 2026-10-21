@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
-from collections.abc import Callable
+import threading
+import time
+from collections.abc import Callable, Iterator
 from typing import Any
+
+import httpx
 
 from .browser import session
 from .config import get_settings
@@ -16,13 +21,19 @@ from .models import JobState
 from .triage import decide_requirements, triage
 
 
+def _emit(message: str) -> None:
+    """Print progress and flush immediately so it is not swallowed by buffering."""
+
+    print(message, flush=True)
+
+
 class LinkedInAgent:
     """Run the tested LinkedIn discovery and JEV triage as a durable pipeline."""
 
     def __init__(
         self,
         *,
-        output_fn: Callable[[str], None] = print,
+        output_fn: Callable[[str], None] = _emit,
         input_fn: Callable[[str], str] = input,
         jev: Jev | None = None,
     ) -> None:
@@ -50,10 +61,11 @@ class LinkedInAgent:
         if not selected_locations:
             raise ValueError("At least one location is required")
 
-        init_db()
         discovered: list[JobState] = []
         base_limit, remainder = divmod(max_jobs, len(selected_locations))
         try:
+            self._preflight_jev()
+            init_db()
             with session(headless=False) as context:
                 page = context.pages[0] if context.pages else context.new_page()
                 self.discovery.ensure_login(page)
@@ -70,16 +82,25 @@ class LinkedInAgent:
                         )
                     )
 
+            if not discovered:
+                self.output(
+                    "\nNo new jobs to analyze. They may already be in the "
+                    "database (discovery skips jobs it has seen). Clear them "
+                    "with `python -m scripts.delete_jobs` to re-analyze."
+                )
+                return []
+
             results: list[JobState] = []
             for index, state in enumerate(discovered, start=1):
                 self._print_job(index, len(discovered), state)
                 try:
-                    update = triage(
-                        state,
-                        jev=self.jev,
-                        locations=selected_locations,
-                        progress=self.output,
-                    )
+                    with self._heartbeat("JEV triage"):
+                        update = triage(
+                            state,
+                            jev=self.jev,
+                            locations=selected_locations,
+                            progress=self.output,
+                        )
                 except Exception as exc:
                     failed = JobState(
                         **state,
@@ -112,6 +133,43 @@ class LinkedInAgent:
         finally:
             if self._owns_jev:
                 self.jev.close()
+
+    def _preflight_jev(self) -> None:
+        """Fail fast (instead of a long silent block) if Ollama is unreachable."""
+
+        base = get_settings().ollama_base_url.rstrip("/")
+        try:
+            httpx.get(f"{base}/api/tags", timeout=5.0).raise_for_status()
+        except Exception as exc:  # noqa: BLE001 - surfaced to the user verbatim
+            raise RuntimeError(
+                f"Ollama is not reachable at {base} ({exc}). Start it with "
+                "`ollama serve` before running the agent."
+            ) from exc
+        self.output(
+            f"Ollama reachable at {base}. Note: JEV runs locally on CPU, so each "
+            "job can take a few minutes; progress updates print while it works."
+        )
+
+    @contextlib.contextmanager
+    def _heartbeat(self, label: str, interval: float = 15.0) -> Iterator[None]:
+        """Emit an elapsed-time tick while a blocking call runs, so it is not
+        mistaken for a hang."""
+
+        stop = threading.Event()
+        start = time.monotonic()
+
+        def tick() -> None:
+            while not stop.wait(interval):
+                elapsed = int(time.monotonic() - start)
+                self.output(f"  …{label} still working ({elapsed}s elapsed)")
+
+        thread = threading.Thread(target=tick, daemon=True)
+        thread.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            thread.join(timeout=1.0)
 
     def _route(self, state: JobState) -> None:
         outcome = state.get("outcome")

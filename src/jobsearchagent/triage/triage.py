@@ -191,20 +191,32 @@ def triage(
                     ),
                     "criteria": {
                         "accept": (
-                            "The core stack and explicit minimum relevant experience "
-                            "match, and no confirmed hard blocker exists. Missing "
-                            "secondary skills are allowed."
+                            "A good part of the core stack (roughly half or more) "
+                            "is covered by the selected profile, OR the uncovered "
+                            "core technologies are closely adjacent to its "
+                            "demonstrated skills (same language, paradigm, or "
+                            "ecosystem) and so are reasonably learnable on the job "
+                            "by a candidate with ~8 years across many technologies "
+                            "who has repeatedly learned new stacks after starting a "
+                            "role. Explicit minimum experience is broadly met and no "
+                            "confirmed hard blocker exists. Missing secondary skills "
+                            "are allowed."
                         ),
                         "reject": (
                             "Explicit job and profile evidence confirms a hard "
-                            "blocker: core-stack mismatch, unmet minimum experience, "
-                            "primary weak-fit focus, or mandatory constraint. Never "
-                            "reject for secondary-skill gaps alone."
+                            "blocker: most of the core stack is absent AND not "
+                            "adjacent to the profile's skills, a core technology is "
+                            "explicitly not_claimed, relevant experience is clearly "
+                            "far below an explicit minimum, the primary focus is a "
+                            "weak_fit, or a mandatory constraint is unmet. Never "
+                            "reject for secondary-skill gaps, nor for a minority of "
+                            "missing core skills that are adjacent or learnable."
                         ),
                         "needs_confirmation": (
                             "A possible hard blocker depends on an unknown language, "
                             "residence, authorization, schedule, experience "
-                            "classification, or other fact."
+                            "classification, or other fact; or core coverage is "
+                            "borderline and hinges on an unverifiable detail."
                         ),
                     },
                 },
@@ -212,14 +224,19 @@ def triage(
                     "type": "score",
                     "instructions": (
                         "Score only the profile selected by the profile answer. "
-                        "Weight core-stack and minimum-experience evidence most "
-                        "heavily. Reduce fit for missing secondary skills without "
-                        "treating those gaps as rejection."
+                        "Give substantial credit for covered core skills, closely "
+                        "adjacent or transferable experience, and the candidate's "
+                        "multi-year breadth across technologies. Reduce fit for "
+                        "genuinely missing core and secondary skills, but do not "
+                        "score Poor merely because a few core technologies are "
+                        "uncovered when adjacent experience plausibly bridges them."
                     ),
                     "criteria": [
-                        "Poor: confirmed core mismatches dominate",
-                        "Partial: core is plausible but meaningful gaps remain",
-                        "Strong: core requirements are well supported",
+                        "Poor: most of the core is uncovered and not adjacent",
+                        "Partial: a meaningful part of the core is covered or "
+                        "adjacent, with remaining gaps",
+                        "Strong: the core is well covered or clearly bridgeable "
+                        "from adjacent experience",
                     ],
                 },
             },

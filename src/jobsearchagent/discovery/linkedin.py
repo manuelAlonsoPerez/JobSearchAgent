@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -37,6 +38,38 @@ _APPLY = re.compile(
 )
 _LOGIN_MARKERS = ("/login", "/checkpoint", "/challenge")
 
+# LinkedIn search-filter query-parameter codes.
+POSTED_WITHIN_SECONDS: dict[str, int] = {
+    "24h": 86_400,
+    "week": 604_800,
+    "month": 2_592_000,
+}
+WORK_TYPE_CODES: dict[str, str] = {
+    "onsite": "1",
+    "remote": "2",
+    "hybrid": "3",
+}
+SORT_CODES: dict[str, str] = {
+    "relevance": "R",
+    "recent": "DD",
+}
+
+
+@dataclass(frozen=True)
+class SearchFilters:
+    """LinkedIn search filters applied on top of the configured base URL.
+
+    Defaults reproduce the historical behavior (remote, Easy Apply, last week,
+    by relevance). ``geo_id`` targets a LinkedIn region such as EMEA
+    (``91000007``) and, when set, replaces the free-text ``location``.
+    """
+
+    geo_id: str | None = None
+    posted_within_seconds: int | None = POSTED_WITHIN_SECONDS["week"]
+    work_type: str | None = WORK_TYPE_CODES["remote"]
+    easy_apply: bool = True
+    sort: str | None = SORT_CODES["relevance"]
+
 
 class LinkedInDiscovery:
     """Discover LinkedIn jobs with one persistent authenticated page."""
@@ -59,6 +92,8 @@ class LinkedInDiscovery:
         query: str,
         location: str,
         limit: int = 20,
+        *,
+        filters: SearchFilters | None = None,
     ) -> list[JobState]:
         """Search and normalize unseen jobs using an existing browser page."""
 
@@ -73,6 +108,7 @@ class LinkedInDiscovery:
                 query,
                 location,
                 start=page_index * 25,
+                filters=filters,
             )
             self.output(f"Searching LinkedIn: {search_url}")
             self._navigate(page, search_url)
@@ -112,17 +148,46 @@ class LinkedInDiscovery:
         location: str,
         *,
         start: int = 0,
+        filters: SearchFilters | None = None,
     ) -> str:
-        """Build a recent, remote, Easy Apply-optimized LinkedIn URL."""
+        """Build a filtered LinkedIn search URL.
 
-        base = linkedin_search_url(query, location, easy_apply=True)
+        With default ``filters`` this yields a recent, remote, Easy Apply URL
+        sorted by relevance. ``filters.geo_id`` targets a region (e.g. EMEA)
+        and replaces the free-text location.
+        """
+
+        filters = filters or SearchFilters()
+        base = linkedin_search_url(query, location, easy_apply=filters.easy_apply)
         parts = urlsplit(base)
         parameters = dict(parse_qsl(parts.query, keep_blank_values=True))
-        parameters["f_WT"] = "2"
+
+        if filters.work_type:
+            parameters["f_WT"] = filters.work_type
+        else:
+            parameters.pop("f_WT", None)
+
+        if filters.posted_within_seconds:
+            parameters["f_TPR"] = f"r{filters.posted_within_seconds}"
+        else:
+            parameters.pop("f_TPR", None)
+
+        if filters.sort:
+            parameters["sortBy"] = filters.sort
+
+        if not filters.easy_apply:
+            parameters.pop("f_AL", None)
+
+        if filters.geo_id:
+            # A region geoId drives the search; drop the free-text location.
+            parameters["geoId"] = filters.geo_id
+            parameters.pop("location", None)
+
         if start:
             parameters["start"] = str(start)
         else:
             parameters.pop("start", None)
+
         return urlunsplit(
             (
                 parts.scheme,

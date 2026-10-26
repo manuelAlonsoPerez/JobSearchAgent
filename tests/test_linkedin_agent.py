@@ -23,10 +23,11 @@ from jobsearchagent.database import (
     seen,
     upsert_job,
 )
-from jobsearchagent.discovery.linkedin import LinkedInDiscovery
+from jobsearchagent.config import load_work_profiles
+from jobsearchagent.discovery.linkedin import LinkedInDiscovery, SearchFilters
 from jobsearchagent.linkedin_agent import LinkedInAgent
 from jobsearchagent.models import JobState
-from jobsearchagent.triage import triage
+from jobsearchagent.triage import select_profile, triage
 from scripts.delete_jobs import delete_jobs
 
 
@@ -199,6 +200,45 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(query["f_AL"], ["true"])
         self.assertEqual(query["start"], ["25"])
 
+    def test_geo_id_filter_targets_a_region_and_drops_location(self) -> None:
+        query = parse_qs(
+            urlsplit(
+                LinkedInDiscovery.build_search_url(
+                    "ServiceNow",
+                    "",
+                    filters=SearchFilters(geo_id="91000007"),
+                )
+            ).query
+        )
+
+        self.assertEqual(query["keywords"], ["ServiceNow"])
+        self.assertEqual(query["geoId"], ["91000007"])
+        self.assertNotIn("location", query)
+        self.assertEqual(query["f_TPR"], ["r604800"])
+        self.assertEqual(query["f_WT"], ["2"])
+        self.assertEqual(query["f_AL"], ["true"])
+
+    def test_filters_can_widen_work_type_and_disable_easy_apply(self) -> None:
+        query = parse_qs(
+            urlsplit(
+                LinkedInDiscovery.build_search_url(
+                    "React",
+                    "Norway",
+                    filters=SearchFilters(
+                        work_type=None,
+                        easy_apply=False,
+                        posted_within_seconds=86_400,
+                        sort="DD",
+                    ),
+                )
+            ).query
+        )
+
+        self.assertNotIn("f_WT", query)
+        self.assertNotIn("f_AL", query)
+        self.assertEqual(query["f_TPR"], ["r86400"])
+        self.assertEqual(query["sortBy"], ["DD"])
+
     def test_title_filters_come_from_search_configuration(self) -> None:
         discovery = LinkedInDiscovery(
             searches={"exclude_titles": ["director", "intern"]},
@@ -233,17 +273,42 @@ class TriageTests(unittest.TestCase):
         self.assertEqual(len(jev.requests), 1)
         self.assertEqual(
             set(jev.requests[0]["questions"]),
-            {"profile", "location_eligibility", "outcome", "fit"},
+            {"location_eligibility", "outcome", "fit"},
         )
+        self.assertNotIn("profile", jev.requests[0]["questions"])
         self.assertNotIn("profile_summaries", jev.requests[0]["state"])
+        self.assertNotIn("profile_candidates", jev.requests[0]["state"])
         self.assertNotIn(
             "experience",
-            jev.requests[0]["state"]["profile_candidates"]["frontend"],
+            jev.requests[0]["state"]["selected_profile"],
         )
         reject_criteria = jev.requests[0]["questions"]["outcome"]["criteria"][
             "reject"
         ]
         self.assertIn("secondary-skill gaps", reject_criteria)
+
+    def test_selects_servicenow_profile_from_title_without_jev(self) -> None:
+        self.assertEqual(
+            select_profile(
+                JobState(title="ServiceNow Architect", raw_description=""),
+                PROFILE_CONFIG["work_profiles"],
+            ),
+            "servicenow-developer",
+        )
+        self.assertEqual(
+            select_profile(
+                JobState(title="Frontend Developer", raw_description="React"),
+                PROFILE_CONFIG["work_profiles"],
+            ),
+            "frontend",
+        )
+        self.assertEqual(
+            select_profile(
+                JobState(title="ServiceNow Architect", raw_description=""),
+                load_work_profiles()["work_profiles"],
+            ),
+            "servicenow-developer",
+        )
 
     def test_clear_servicenow_job_is_accepted_with_servicenow_profile(self) -> None:
         update = triage(

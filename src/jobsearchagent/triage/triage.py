@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import re
 from collections.abc import Callable, Mapping
 from typing import Any, cast
 
@@ -10,28 +10,27 @@ from ..config import get_settings, load_work_profiles
 from ..jev import Jev
 from ..models import JobState, Outcome
 
-
-def _profile_selection_option(profile: Mapping[str, Any]) -> str:
-    skills = profile.get("skills", [])
-    skill_names = [
-        str(skill.get("name"))
-        for skill in skills
-        if isinstance(skill, Mapping) and skill.get("name")
-    ]
-    return json.dumps(
-        {
-            "title": profile.get("title"),
-            "summary": profile.get("summary"),
-            "years_relevant": profile.get("years_relevant"),
-            "skills": skill_names,
-            "matching_titles": profile.get("matching_titles", []),
-        },
-        ensure_ascii=False,
-    )
+# The selected decision model reprocesses the whole prompt per question with no
+# KV-cache reuse, so prompt size drives latency. Requirements sit near the top
+# of a description.
+_EVALUATION_DESCRIPTION_LIMIT = 4_000
+_PROFILE_SCAN_LIMIT = 1_500
+_GENERIC_TITLE_TOKENS = {
+    "consultant",
+    "consultor",
+    "developer",
+    "desarrollador",
+    "engineer",
+    "ingeniero",
+    "lead",
+    "programador",
+    "specialist",
+    "utvikler",
+}
 
 
 def _profile_evaluation_context(profile: Mapping[str, Any]) -> dict[str, Any]:
-    """Keep the one-call prompt grounded without sending full CV histories."""
+    """Keep the evaluation prompt grounded without sending full CV histories."""
 
     compact_skills: list[dict[str, Any]] = []
     for skill in profile.get("skills", []):
@@ -61,6 +60,219 @@ def _profile_evaluation_context(profile: Mapping[str, Any]) -> dict[str, Any]:
     } | {"skills": compact_skills}
 
 
+def _job_payload(state: JobState, *, char_limit: int) -> dict[str, Any]:
+    return {
+        "title": state.get("title", ""),
+        "company": state.get("company", ""),
+        "location": state.get("location", ""),
+        "description": (state.get("raw_description", "") or "")[:char_limit],
+    }
+
+
+def _location_policy(selected_locations: list[str]) -> dict[str, Any]:
+    concrete_locations = [
+        location
+        for location in selected_locations
+        if location.casefold() != "remote"
+    ]
+    concrete_scope = (
+        ", ".join(concrete_locations)
+        if concrete_locations
+        else "the configured eligible locations"
+    )
+    remote_allowed = any(
+        location.casefold() == "remote" for location in selected_locations
+    )
+    return {
+        "authoritative": True,
+        "configured_locations": selected_locations,
+        "unrestricted_remote_allowed": remote_allowed,
+        "eligible": (
+            "Matches a configured location, permits working from "
+            f"{concrete_scope}, includes {concrete_scope}, or is genuinely "
+            "worldwide/unrestricted remote when Remote is configured."
+        ),
+        "ineligible": (
+            "Residence, authorization, or remote-work restrictions exclude "
+            "every configured concrete location."
+        ),
+        "unknown": (
+            "Remote is stated but eligibility for a configured concrete "
+            "location is not established."
+        ),
+    }
+
+
+def _compact_shared(shared: Mapping[str, Any]) -> dict[str, Any]:
+    """Drop phone numbers and long evidence text that do not change decisions."""
+
+    compact: dict[str, Any] = {}
+    candidate = shared.get("candidate")
+    if isinstance(candidate, Mapping):
+        compact["candidate"] = {
+            key: candidate[key]
+            for key in ("name", "based_in")
+            if key in candidate
+        }
+
+    languages = shared.get("languages")
+    if isinstance(languages, list):
+        compact["languages"] = [
+            {
+                key: language[key]
+                for key in (
+                    "name",
+                    "cefr",
+                    "spoken",
+                    "cv_wording",
+                    "exam",
+                    "exam_passed",
+                    "score",
+                    "requirement_met",
+                )
+                if key in language
+            }
+            for language in languages
+            if isinstance(language, Mapping)
+        ]
+
+    constraints = shared.get("work_constraints")
+    if isinstance(constraints, Mapping):
+        will = constraints.get("will_consider")
+        compact_constraints = {
+            key: constraints[key]
+            for key in (
+                "based_in",
+                "spain_residence_stated",
+                "work_authorization_stated_on_cv",
+            )
+            if key in constraints
+        }
+        if isinstance(will, Mapping):
+            compact_will = {
+                key: will[key]
+                for key in (
+                    "countries",
+                    "arrangements",
+                    "remote_from_norway",
+                    "spain_locations",
+                )
+                if key in will
+            }
+            if compact_will:
+                compact_constraints["will_consider"] = compact_will
+        compact["work_constraints"] = compact_constraints
+
+    education = shared.get("education")
+    if isinstance(education, list):
+        compact["education"] = [
+            {
+                key: item[key]
+                for key in ("school", "credential", "years", "completed", "notes")
+                if key in item
+            }
+            for item in education
+            if isinstance(item, Mapping)
+        ]
+    return compact
+
+
+def _compact_match_rules(match_rules: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep policy definitions; question criteria already encode the steps."""
+
+    compact = {
+        key: match_rules[key]
+        for key in ("outcomes", "definitions")
+        if key in match_rules
+    }
+    return compact or dict(match_rules)
+
+
+def _contains_phrase(haystack: str, phrase: str) -> bool:
+    phrase = phrase.strip()
+    if not phrase:
+        return False
+    if re.search(r"[\s\-]", phrase):
+        return phrase in haystack
+    return re.search(rf"\b{re.escape(phrase)}\b", haystack) is not None
+
+
+def _distinctive_phrases(profile: Mapping[str, Any]) -> list[str]:
+    phrases: list[str] = []
+    for raw in (
+        profile.get("title"),
+        *(profile.get("matching_titles") or []),
+    ):
+        text = str(raw or "").casefold()
+        if text:
+            phrases.append(text)
+            tokens = [
+                token
+                for token in re.split(r"[\s\-/]+", text)
+                if token and token not in _GENERIC_TITLE_TOKENS
+            ]
+            if tokens:
+                phrases.append(" ".join(tokens))
+                phrases.extend(tokens)
+    for skill in profile.get("skills") or []:
+        if not isinstance(skill, Mapping):
+            continue
+        name = str(skill.get("name") or "").casefold()
+        if name:
+            phrases.append(name)
+        for alias in skill.get("aliases") or []:
+            alias_text = str(alias or "").casefold()
+            if alias_text:
+                phrases.append(alias_text)
+    return phrases
+
+
+def select_profile(
+    state: JobState,
+    profiles: Mapping[str, Any],
+) -> str:
+    """Pick the one profile whose titles and skills best match the job.
+
+    This is deterministic so triage only spends one JEV call on outcome/fit.
+    """
+
+    title = str(state.get("title") or "").casefold()
+    haystack = " ".join(
+        [
+            title,
+            (str(state.get("raw_description") or "")[:_PROFILE_SCAN_LIMIT]).casefold(),
+        ]
+    )
+    best_id: str | None = None
+    best_score = -1
+    fallback_id: str | None = None
+    for profile_id, profile in profiles.items():
+        if not isinstance(profile, Mapping):
+            continue
+        if fallback_id is None:
+            fallback_id = str(profile_id)
+        score = 0
+        for phrase in _distinctive_phrases(profile):
+            in_title = _contains_phrase(title, phrase)
+            in_body = _contains_phrase(haystack, phrase)
+            if not in_body:
+                continue
+            weight = 6 if " " in phrase or "-" in phrase else 3
+            if in_title:
+                weight += 4
+            if len(phrase) >= 8:
+                weight += 2
+            score = max(score, 0) + weight
+        if score > best_score:
+            best_score = score
+            best_id = str(profile_id)
+    if best_id is None or best_score <= 0:
+        if fallback_id is None:
+            raise ValueError("No work profiles are configured")
+        return fallback_id
+    return best_id
+
+
 def triage(
     state: JobState,
     *,
@@ -69,7 +281,7 @@ def triage(
     profile_config: Mapping[str, Any] | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
-    """Select one profile and return normalized outcome and fit updates."""
+    """Select one profile locally, then JEV-score only that profile."""
 
     output = progress or (lambda _: None)
     selected_locations = locations or get_settings().job_locations
@@ -81,82 +293,31 @@ def triage(
     if not isinstance(profiles, Mapping) or not profiles:
         raise ValueError("No work profiles are configured")
 
-    profile_options = {
-        str(profile_id): _profile_selection_option(profile)
-        for profile_id, profile in profiles.items()
-        if isinstance(profile, Mapping)
-    }
+    profile_id = select_profile(state, profiles)
+    profile = profiles[profile_id]
+    if not isinstance(profile, Mapping):
+        raise ValueError(f"Selected an unknown profile: {profile_id!r}")
+
+    configured_locations = ", ".join(selected_locations)
     client = jev or Jev()
     owns_client = jev is None
     try:
-        concrete_locations = [
-            location
-            for location in selected_locations
-            if location.casefold() != "remote"
-        ]
-        configured_locations = ", ".join(selected_locations)
-        concrete_scope = (
-            ", ".join(concrete_locations)
-            if concrete_locations
-            else "the configured eligible locations"
+        output(
+            f"Selected profile '{profile_id}'. "
+            "JEV: evaluating location, outcome, and fit..."
         )
-        remote_allowed = any(
-            location.casefold() == "remote" for location in selected_locations
-        )
-
-        output("JEV: selecting profile and evaluating outcome and fit...")
         answers = client.ask(
             state={
-                "job": {
-                    "title": state.get("title", ""),
-                    "company": state.get("company", ""),
-                    "location": state.get("location", ""),
-                    "description": state.get("raw_description", "")[:10_000],
-                    "easy_apply": bool(state.get("easy_apply")),
-                },
-                "candidate_shared": config.get("shared", {}),
-                "location_policy": {
-                    "authoritative": True,
-                    "configured_locations": selected_locations,
-                    "unrestricted_remote_allowed": remote_allowed,
-                    "eligible": (
-                        "The job matches a configured location, explicitly permits "
-                        f"working from {concrete_scope}, has a wider scope that "
-                        f"includes {concrete_scope}, or is genuinely worldwide/"
-                        "unrestricted remote when Remote is configured."
-                    ),
-                    "ineligible": (
-                        "The job requires residence, work authorization, or remote "
-                        "work in a country or region that excludes every configured "
-                        "concrete location."
-                    ),
-                    "unknown": (
-                        "The job says remote but does not establish whether someone "
-                        "in a configured concrete location may perform it."
-                    ),
-                    "precedence": (
-                        "Use this runtime policy instead of older location "
-                        "preferences inside candidate_shared."
-                    ),
-                },
-                "match_rules": config.get("match_rules", {}),
-                "profile_candidates": {
-                    str(profile_id): _profile_evaluation_context(profile)
-                    for profile_id, profile in profiles.items()
-                    if isinstance(profile, Mapping)
-                },
+                "job": _job_payload(
+                    state,
+                    char_limit=_EVALUATION_DESCRIPTION_LIMIT,
+                ),
+                "candidate_shared": _compact_shared(config.get("shared", {})),
+                "location_policy": _location_policy(selected_locations),
+                "match_rules": _compact_match_rules(config.get("match_rules", {})),
+                "selected_profile": _profile_evaluation_context(profile),
             },
             questions={
-                "profile": {
-                    "type": "choice",
-                    "instructions": (
-                        "Select exactly one candidate profile that best matches "
-                        "the job title and core responsibilities. Never combine "
-                        "skills from different profiles. The outcome and fit "
-                        "answers must evaluate only this selected profile."
-                    ),
-                    "criteria": profile_options,
-                },
                 "location_eligibility": {
                     "type": "choice",
                     "instructions": (
@@ -184,10 +345,8 @@ def triage(
                     "type": "choice",
                     "instructions": (
                         "Decide the candidate's non-location outcome using only "
-                        "the profile selected by the profile answer and match_rules. "
-                        "Never borrow evidence from another profile. Ignore "
-                        "geographic eligibility because location_eligibility "
-                        "handles it."
+                        "selected_profile and match_rules. Ignore geographic "
+                        "eligibility because location_eligibility handles it."
                     ),
                     "criteria": {
                         "accept": (
@@ -223,13 +382,13 @@ def triage(
                 "fit": {
                     "type": "score",
                     "instructions": (
-                        "Score only the profile selected by the profile answer. "
-                        "Give substantial credit for covered core skills, closely "
-                        "adjacent or transferable experience, and the candidate's "
-                        "multi-year breadth across technologies. Reduce fit for "
-                        "genuinely missing core and secondary skills, but do not "
-                        "score Poor merely because a few core technologies are "
-                        "uncovered when adjacent experience plausibly bridges them."
+                        "Score only selected_profile. Give substantial credit for "
+                        "covered core skills, closely adjacent or transferable "
+                        "experience, and the candidate's multi-year breadth across "
+                        "technologies. Reduce fit for genuinely missing core and "
+                        "secondary skills, but do not score Poor merely because a "
+                        "few core technologies are uncovered when adjacent "
+                        "experience plausibly bridges them."
                     ),
                     "criteria": [
                         "Poor: most of the core is uncovered and not adjacent",
@@ -244,17 +403,6 @@ def triage(
     finally:
         if owns_client:
             client.close()
-
-    profile_answer = answers.get("profile")
-    if not isinstance(profile_answer, Mapping):
-        raise ValueError("JEV returned no typed profile decision")
-    profile_id = profile_answer.get(
-        "choice",
-        profile_answer.get("answer"),
-    )
-    profile = profiles.get(profile_id)
-    if not isinstance(profile_id, str) or not isinstance(profile, Mapping):
-        raise ValueError(f"JEV selected an unknown profile: {profile_id!r}")
 
     location_answer = answers.get("location_eligibility", {})
     skill_answer = answers.get("outcome", {})
@@ -295,7 +443,7 @@ def triage(
         "fit_score": float(fit_score),
         "review_reason": review_reason,
         "triage_details": {
-            "profile": dict(profile_answer),
+            "profile": {"choice": profile_id, "source": "title_and_skills"},
             "location_eligibility": location_answer,
             "non_location_outcome": skill_answer,
             "fit": fit_answer,

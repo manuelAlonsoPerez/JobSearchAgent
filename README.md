@@ -62,9 +62,9 @@ PYTHONPATH=src python -m jobsearchagent.linkedin_agent \
 
 On the first run, complete LinkedIn login in the Chromium window when prompted, then return to the
 terminal and press Enter. Locations default to `JOB_LOCATIONS` in `.env`; repeat `--location` to
-override them for one run. On CPU-only hardware the single JEV triage call can take several minutes
-per job — the agent prints heartbeat progress while it works. To re-analyze jobs already in the
-database, clear them first with `python -m scripts.delete_jobs` (see
+override them for one run. On CPU-only hardware the one JEV evaluation call can still take a
+few minutes per job — the agent prints heartbeat progress while it works. To re-analyze jobs
+already in the database, clear them first with `python -m scripts.delete_jobs` (see
 [Delete stored jobs](#delete-stored-jobs)).
 
 ## Functional parts developed so far
@@ -93,7 +93,8 @@ database, clear them first with `python -m scripts.delete_jobs` (see
 
 `jobsearchagent.triage.triage`:
 
-- Selects exactly one candidate work profile.
+- Selects exactly one candidate work profile from the job title and distinctive
+  skills (no JEV call), then asks JEV only about that profile.
 - Evaluates whether the configured locations permit applying.
 - Accepts when a good part of the core stack is covered, or when uncovered core technologies are
   closely adjacent/learnable given the candidate's multi-year breadth.
@@ -184,6 +185,34 @@ PYTHONPATH=src python -m jobsearchagent.linkedin_agent \
   --location Remote \
   --max-jobs 5
 ```
+
+#### Search filters
+
+Flags shape the LinkedIn search URL. Defaults reproduce the historical
+behavior: remote, Easy Apply, posted in the last week, sorted by relevance.
+
+| Flag                               | Choices (default)                     | LinkedIn parameter               |
+| ---------------------------------- | ------------------------------------- | -------------------------------- |
+| `--geo-id`                         | region id, e.g. `91000007` (EMEA)     | `geoId` (replaces text location) |
+| `--posted-within`                  | `24h`, `week`\*, `month`              | `f_TPR`                          |
+| `--work-type`                      | `remote`\*, `hybrid`, `onsite`, `any` | `f_WT` (`any` removes it)        |
+| `--sort`                           | `relevance`\*, `recent`               | `sortBy`                         |
+| `--easy-apply` / `--no-easy-apply` | on\*                                  | `f_AL`                           |
+
+To reproduce an EMEA ServiceNow search (last week, remote, Easy Apply):
+
+```bash
+PYTHONPATH=src python -m jobsearchagent.linkedin_agent \
+  --query ServiceNow \
+  --geo-id 91000007 \
+  --max-jobs 5
+```
+
+`--geo-id` runs one region-scoped search instead of iterating `--location`
+text searches. Note that **triage eligibility still follows
+`JOB_LOCATIONS`/`--location`**, so searching a wider region will not by itself
+mark those jobs eligible — adjust `JOB_LOCATIONS` if you want EMEA jobs to pass
+the location check.
 
 ### Persistence and review queue
 
@@ -364,3 +393,5 @@ Use a database other than `DB_PATH`:
 PYTHONPATH=src python scripts/delete_jobs.py \
   --db-path /path/to/jobsearch.db
 ```
+
+PYTHONPATH=src python -m jobsearchagent.linkedin_agent --query ServiceNow --geo-id 91000007 --posted-within week --work-type remote --easy-apply --sort relevance --max-jobs 15

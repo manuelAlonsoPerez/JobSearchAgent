@@ -105,15 +105,12 @@ class LinkedInScraperSmokeTests(unittest.TestCase):
         self.assertEqual(len(jev.requests), 1)
         self.assertEqual(
             set(jev.requests[0]["questions"]),
-            {"profile", "location_eligibility", "outcome", "fit"},
+            {"location_eligibility", "outcome", "fit"},
         )
-        self.assertIn(
-            "servicenow-developer",
-            jev.requests[0]["questions"]["profile"]["criteria"],
-        )
-        self.assertIn(
-            "servicenow-developer",
-            jev.requests[0]["state"]["profile_candidates"],
+        self.assertNotIn("profile", jev.requests[0]["questions"])
+        self.assertEqual(
+            jev.requests[0]["state"]["selected_profile"]["title"],
+            "ServiceNow Developer",
         )
         self.assertTrue(
             jev.requests[0]["state"]["location_policy"]["authoritative"]

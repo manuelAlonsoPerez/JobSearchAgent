@@ -170,6 +170,16 @@ PYTHONPATH=src python -m jobsearchagent.linkedin_agent \
   --max-jobs 5
 ```
 
-Accepted Easy Apply jobs are currently stored as `dry_run_ready`. This command deliberately does
-not fill or submit LinkedIn forms yet; document generation, validation, Easy Apply form handling,
-and submission remain Parts A3–A7 of the build guide.
+```bash
+PYTHONPATH=src python -m jobsearchagent.linkedin_agent --query ServiceNow --geo-id 91000007 --posted-within week --work-type remote --easy-apply --sort relevance --max-jobs 15
+```
+
+Accepted Easy Apply jobs are currently stored as `dry_run_ready`. To smoke-test
+filling one Easy Apply modal (stops before Submit; discards the draft):
+
+```bash
+PYTHONPATH=src python -m jobsearchagent.apply.smoke_apply \
+  https://www.linkedin.com/jobs/view/JOB_ID/
+```
+
+Submission remains Part A7. Cover letters and tailored CVs are skipped for now.

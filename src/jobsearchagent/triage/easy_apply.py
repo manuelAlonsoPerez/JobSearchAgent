@@ -101,6 +101,24 @@ def has_easy_apply(page: Page) -> bool:
     return _easy_apply_button(page) is not None
 
 
+def reached_submit_step(page: Page) -> bool:
+    """Whether the modal footer is the Submit control — stop before clicking it."""
+
+    return page.get_by_role("button", name=_SUBMIT).filter(visible=True).count() > 0
+
+
+def field_looks_like_cv(label: str) -> bool:
+    """Whether a field label is a resume / CV upload."""
+
+    return bool(_CV_KEYWORDS.search(label or ""))
+
+
+def field_looks_like_cover_letter(label: str) -> bool:
+    """Whether a field label is a cover-letter upload or text box."""
+
+    return bool(_COVER_LETTER_KEYWORDS.search(label or ""))
+
+
 def open_easy_apply(page: Page, output_fn: Callable[[str], None] = print) -> None:
     """Click the Easy Apply button and wait for the modal footer to appear."""
 

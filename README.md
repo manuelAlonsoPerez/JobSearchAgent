@@ -230,15 +230,29 @@ the location check.
 - `utils/pdf.py`: renders generated plain-text artifacts as A4 PDFs.
 - `linkedin_smoke.py`: diagnostic scraper/JEV runner retained for testing and troubleshooting.
 
+### Easy Apply filling (smoke)
+
+`jobsearchagent.apply.smoke_apply` opens one job URL, fills profile-backed Easy
+Apply fields, uploads the existing source CV when a resume field is present,
+and **stops on Review**. It never clicks **Submit application**. Cover letters
+and tailored CVs are skipped in this pass; CEFR, residence, English-score, and
+unknown screening questions are deferred rather than guessed.
+
+```bash
+PYTHONPATH=src python -m jobsearchagent.apply.smoke_apply \
+  https://www.linkedin.com/jobs/view/4478685620/
+```
+
+Optional: `--profile-id servicenow-developer`, `--cv /path/to/cv.pdf`. The
+browser stays on Review until you press Enter, then the draft is discarded.
+
 ## Not implemented yet
 
 The current production command does **not** apply for jobs. These build-guide stages remain:
 
 - Generate a tailored CV and cover letter.
 - Validate generated artifacts against profile facts and JEV quality thresholds.
-- Open and answer the multi-step LinkedIn Easy Apply form.
-- Upload the validated CV and use the cover letter when supported.
-- Stop at Review in dry-run mode or submit once in live mode.
+- Submit the prepared Easy Apply modal (A7) or record the result (A8).
 - Wire the complete thread-per-job workflow through LangGraph.
 
 See `setup.md` for installation and browser-login instructions, and
@@ -393,5 +407,3 @@ Use a database other than `DB_PATH`:
 PYTHONPATH=src python scripts/delete_jobs.py \
   --db-path /path/to/jobsearch.db
 ```
-
-PYTHONPATH=src python -m jobsearchagent.linkedin_agent --query ServiceNow --geo-id 91000007 --posted-within week --work-type remote --easy-apply --sort relevance --max-jobs 15

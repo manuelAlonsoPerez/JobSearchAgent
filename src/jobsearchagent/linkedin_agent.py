@@ -239,6 +239,10 @@ class LinkedInAgent:
         details: Any,
     ) -> None:
         result = {
+            "url": state.get("url"),
+            "title": state.get("title"),
+            "company": state.get("company"),
+            "location": state.get("location"),
             "profile_id": state.get("profile_id"),
             "outcome": state.get("outcome"),
             "fit_score": state.get("fit_score"),

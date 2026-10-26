@@ -19,6 +19,9 @@ from ..models import FieldAnswer, Form, FormField, JobState
 from ..triage.easy_apply import (
     _MAX_MODAL_STEPS,
     advance_modal,
+    easy_apply_modal_open,
+    field_looks_like_cv,
+    field_looks_like_saved_resume,
     modal_root,
     open_easy_apply,
     reached_submit_step,
@@ -31,13 +34,26 @@ from .answers import (
     resolve_cv_path,
     resolve_field,
 )
-from .fill import apply_answer, current_value
+from .fill import apply_answer, current_value, resume_upload_available, upload_resume
 
 if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
 
 
 ChatFn = Callable[[Sequence[Mapping[str, Any]]], str]
+
+
+def _usable_existing(field: FormField, existing: str | None) -> bool:
+    """Whether a pre-filled value is a real answer, not a generated widget id."""
+
+    if not existing or field.type == "file":
+        return False
+    text = str(existing).strip()
+    if re.match(r"^(radio-group-)?_r_[a-z0-9]+_?$", text, re.IGNORECASE):
+        return False
+    if field.type == "radio":
+        return bool(re.match(r"^(yes|no|si|sí)$", text, re.IGNORECASE))
+    return True
 
 
 def build_and_answer_form(
@@ -68,14 +84,12 @@ def build_and_answer_form(
         for message in state.get("messages") or []
     ]
 
-    if not reached_submit_step(page):
-        footer = page.get_by_role(
-            "button",
-            name=re.compile(r"continue|next|review|submit", re.IGNORECASE),
-        ).filter(visible=True)
-        if not footer.count():
-            output_fn("Opening the Easy Apply modal...")
-            open_easy_apply(page, output_fn)
+    if not easy_apply_modal_open(page):
+        open_easy_apply(page, output_fn)
+    if not easy_apply_modal_open(page):
+        raise RuntimeError(
+            "Easy Apply modal did not open; refusing to fill page chrome."
+        )
 
     all_fields: list[FormField] = []
     all_answers: list[FieldAnswer] = []
@@ -99,6 +113,11 @@ def build_and_answer_form(
             f"Step {step_index + 1}: {step.step_label or 'unnamed'} "
             f"({len(step.fields)} fields)"
         )
+        for field in step.fields:
+            output_fn(
+                f"  saw {field.type} {field.label!r} "
+                f"required={field.required} options={field.options}"
+            )
 
         step_answers = _answer_step(
             page,
@@ -109,6 +128,7 @@ def build_and_answer_form(
             context=context,
             facts=facts,
             cv_path=resume,
+            job_location=str(state.get("location") or ""),
             jev=jev,
             chat_fn=chat_fn,
             history=history,
@@ -174,13 +194,35 @@ def _answer_step(
     context: Mapping[str, Any],
     facts: list[str],
     cv_path: Path | None,
+    job_location: str,
     jev: Jev | None,
     chat_fn: ChatFn | None,
     history: list[dict[str, Any]],
     output_fn: Callable[[str], None],
 ) -> list[FieldAnswer]:
     answers: list[FieldAnswer] = []
+    uploaded = False
+    if cv_path is not None and resume_upload_available(modal):
+        uploaded = upload_resume(page, modal, cv_path)
+        output_fn(
+            f"  profile CV {'uploaded' if uploaded else 'not uploaded'}: {cv_path}"
+        )
+
     for field in fields:
+        if uploaded and (
+            field.type == "file"
+            or field_looks_like_cv(field.label or field.id)
+            or field_looks_like_saved_resume(field.label or field.id)
+        ):
+            answers.append(
+                FieldAnswer(
+                    field_id=field.id,
+                    value=str(cv_path),
+                    source="profile",
+                )
+            )
+            output_fn(f"  profile {field.label!r} uploaded")
+            continue
         existing = current_value(modal, field)
         answer = resolve_field(
             field,
@@ -189,6 +231,7 @@ def _answer_step(
             cv_path=cv_path,
             facts=facts,
             context=context,
+            job_location=job_location,
         )
         if (
             answer.value is None
@@ -203,7 +246,10 @@ def _answer_step(
                 chat_fn=chat_fn,
                 history=history,
             )
-        if answer.value is None and existing and field.type not in {"file"}:
+        if (
+            answer.value is None
+            and _usable_existing(field, existing)
+        ):
             # LinkedIn often pre-fills contact info from the logged-in account.
             answer = FieldAnswer(
                 field_id=field.id,

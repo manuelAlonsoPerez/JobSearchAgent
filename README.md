@@ -238,12 +238,17 @@ and **stops on Review**. It never clicks **Submit application**. Cover letters
 and tailored CVs are skipped in this pass; CEFR, residence, English-score, and
 unknown screening questions are deferred rather than guessed.
 
+Defaults to `src/jobsearchagent/apply/decision.json` (the JEV agent output,
+including `url` and `profile_id`). On the resume step it uploads the matching
+source CV from `src/docs` for that profile
+(`Manuel Alonso - Developer ServiceNow.pdf` for `servicenow-developer`).
+
 ```bash
-PYTHONPATH=src python -m jobsearchagent.apply.smoke_apply \
-  https://www.linkedin.com/jobs/view/4478685620/
+# Uses apply/decision.json and the profile CV in src/docs
+PYTHONPATH=src python -m jobsearchagent.apply.smoke_apply
 ```
 
-Optional: `--profile-id servicenow-developer`, `--cv /path/to/cv.pdf`. The
+Optional: `--from-json other.json`, a job URL, `--profile-id`, or `--cv`. The
 browser stays on Review until you press Enter, then the draft is discarded.
 
 ## Not implemented yet

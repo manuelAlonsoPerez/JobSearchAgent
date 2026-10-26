@@ -44,12 +44,19 @@ _SUBMIT = re.compile(
     re.IGNORECASE,
 )
 _DISCARD = re.compile(r"discard|descartar|forkast", re.IGNORECASE)
+_APPLY_HEADING = re.compile(r"^apply to\b", re.IGNORECASE)
 
-# The modal footer always exposes exactly one of these; the underlying job page
-# never does, so a visible footer button is a reliable "modal is open" signal.
+# Footer labels used *inside* the Easy Apply modal. Matching these on the
+# whole LinkedIn page is not a signal the modal is open: the header, feed,
+# and carousels also expose Next / Submit.
 _FOOTER = re.compile(
     "|".join(pattern.pattern for pattern in (_REVIEW, _NEXT, _SUBMIT)),
     re.IGNORECASE,
+)
+_APPLY_SHELL = (
+    ".jobs-easy-apply-modal:visible, "
+    ".jobs-easy-apply-content:visible, "
+    "[class*='jobs-easy-apply-modal']:visible"
 )
 
 # Artifact signals detected from field labels and modal text.
@@ -104,13 +111,51 @@ def has_easy_apply(page: Page) -> bool:
 def reached_submit_step(page: Page) -> bool:
     """Whether the modal footer is the Submit control — stop before clicking it."""
 
-    return page.get_by_role("button", name=_SUBMIT).filter(visible=True).count() > 0
+    if not easy_apply_modal_open(page):
+        return False
+    return (
+        modal_root(page)
+        .get_by_role("button", name=_SUBMIT)
+        .filter(visible=True)
+        .count()
+        > 0
+    )
+
+
+def easy_apply_modal_open(page: Page) -> bool:
+    """Whether the Easy Apply dialog itself is on screen.
+
+    Page chrome (search, language, notifications) and stray Next/Submit
+    buttons do not count.
+    """
+
+    try:
+        if _apply_heading(page).count():
+            return True
+        return page.locator(_APPLY_SHELL).count() > 0
+    except Exception:
+        return False
+
+
+_SAVED_RESUME = re.compile(
+    r"\b(pdf|docx?)\b.*\.(pdf|docx?)\b"
+    r"|\.(pdf|docx?)\b.*\d{1,2}/\d{1,2}/\d{2,4}",
+    re.IGNORECASE,
+)
+
+
+def field_looks_like_saved_resume(label: str) -> bool:
+    """Whether a label is a previously uploaded LinkedIn resume option."""
+
+    return bool(_SAVED_RESUME.search(label or ""))
 
 
 def field_looks_like_cv(label: str) -> bool:
-    """Whether a field label is a resume / CV upload."""
+    """Whether a field label is a resume / CV upload or saved-resume option."""
 
-    return bool(_CV_KEYWORDS.search(label or ""))
+    return bool(_CV_KEYWORDS.search(label or "")) or field_looks_like_saved_resume(
+        label
+    )
 
 
 def field_looks_like_cover_letter(label: str) -> bool:
@@ -133,21 +178,18 @@ def open_easy_apply(page: Page, output_fn: Callable[[str], None] = print) -> Non
     button.scroll_into_view_if_needed()
     button.click()
 
-    # The modal is "open" once its footer (Next/Review/Submit) is visible. This
-    # is more reliable than waiting on a container selector, which can lock onto
-    # a hidden template dialog.
     try:
-        page.get_by_role("button", name=_FOOTER).filter(
-            visible=True
-        ).first.wait_for(state="visible", timeout=20_000)
+        _apply_heading(page).or_(page.locator(_APPLY_SHELL)).first.wait_for(
+            state="visible",
+            timeout=20_000,
+        )
     except Exception as exc:
         _dump_open_failure(page, output_fn)
         raise RuntimeError(
-            "Clicked Easy Apply but no modal footer (Next/Review/Submit) became "
-            "visible within 20s. A diagnostic screenshot and the visible button "
-            "names were logged above. LinkedIn may have shown a login/security "
-            "wall, a localized label this runner does not recognize, or changed "
-            "its modal markup."
+            "Clicked Easy Apply but the Apply-to modal did not become visible "
+            "within 20s. A diagnostic screenshot and the visible button names "
+            "were logged above. LinkedIn may have shown a login/security wall "
+            "or changed its modal markup."
         ) from exc
 
 
@@ -198,14 +240,12 @@ def modal_root(page: Page) -> Locator:
 
     LinkedIn does not reliably expose ``role="dialog"`` on this modal, so we
     anchor on the modal's title heading ("Apply to <company>") and climb to the
-    nearest ancestor that also contains a footer button. This scopes field and
-    text extraction to the modal and keeps page-wide controls (global search,
-    messaging, the premium-upsell panel) out of the results.
+    nearest ancestor that also contains a footer button. Never fall back to
+    ``body`` or a random ``artdeco-modal``: that scrapes page chrome
+    (search, language, notifications) instead of the application.
     """
 
-    heading = page.get_by_role(
-        "heading", name=re.compile(r"apply to\b", re.IGNORECASE)
-    ).first
+    heading = _apply_heading(page).first
     if heading.count():
         box = heading.locator(
             "xpath=ancestor::*[.//button["
@@ -217,31 +257,32 @@ def modal_root(page: Page) -> Locator:
         )
         if box.count():
             return box.first
-
-    # Fallbacks: a role=dialog / artdeco-modal container if present.
-    footer = page.get_by_role("button", name=_FOOTER).filter(visible=True).first
-    if footer.count():
-        box = footer.locator(
+        shell = heading.locator(
             "xpath=ancestor::*["
             "@role='dialog'"
-            " or contains(concat(' ', normalize-space(@class), ' '),"
-            " ' artdeco-modal ')"
+            " or contains(@class,'artdeco-modal')"
+            " or contains(@class,'jobs-easy-apply')"
             "][1]"
         )
-        if box.count():
-            return box.first
-    for selector in ('[role="dialog"]:visible', '.artdeco-modal:visible'):
-        loc = page.locator(selector)
-        if loc.count():
-            return loc.last
-    return page.locator("body")
+        if shell.count():
+            return shell.first
+
+    shell = page.locator(_APPLY_SHELL)
+    if shell.count():
+        return shell.last
+    return page.locator(".jobs-easy-apply-modal:visible")
 
 
 def advance_modal(page: Page, output_fn: Callable[[str], None] = print) -> bool:
     """Click Review or Next (never Submit); return whether a control was used."""
 
+    if not easy_apply_modal_open(page):
+        _log_footer_buttons(page, output_fn)
+        return False
+
+    root = modal_root(page)
     for pattern in (_REVIEW, _NEXT):
-        button = page.get_by_role("button", name=pattern).filter(visible=True)
+        button = root.get_by_role("button", name=pattern).filter(visible=True)
         for index in range(button.count()):
             control = button.nth(index)
             if control.is_enabled():
@@ -315,6 +356,12 @@ def detect_artifacts(forms: list[Form], texts: list[str]) -> dict[str, Any]:
             "cover_letter_keyword": _match_context(haystack, cover_letter_match),
         },
     }
+
+
+def _apply_heading(page: Page) -> Locator:
+    """Visible 'Apply to …' title of the Easy Apply dialog."""
+
+    return page.get_by_role("heading", name=_APPLY_HEADING).filter(visible=True)
 
 
 def _easy_apply_button(page: Page) -> Locator | None:

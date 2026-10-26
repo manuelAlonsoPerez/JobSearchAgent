@@ -95,22 +95,147 @@ def page_to_form(page: Page, url: str | None = None, root: Any = None) -> Form:
         root => {
           const controls = [...root.querySelectorAll("input, textarea, select")];
 
+          const visibleText = (element) => {
+            if (!element) return "";
+            return (element.innerText || "")
+              .replace(/\\s+/g, " ")
+              .replace(/\\*\\s*$/, "")
+              .trim();
+          };
+
+          const isGenerated = (text) =>
+            /^(radio-group-)?_r_[a-z0-9]+_?$/i.test((text || "").trim())
+            || /^urn:li:/i.test(text || "");
+
+          const isOptionText = (text) => /^(yes|no|si|sí)$/i.test(text || "");
+
+          const isDocumentOption = (text) => {
+            const value = (text || "").replace(/\\s+/g, " ").trim();
+            return /^(pdf|docx?|cv|resume)\\b/i.test(value)
+              && /\\.(pdf|docx?)\\b/i.test(value);
+          };
+
+          const isQuestionText = (text) => {
+            const value = (text || "").replace(/this field is required/ig, "").trim();
+            return Boolean(
+              value
+              && value.length > 8
+              && !isGenerated(value)
+              && !isOptionText(value)
+              && !isDocumentOption(value)
+            );
+          };
+
           const labelFor = (element) => {
             const labels = element.labels ? [...element.labels] : [];
             const labelText = labels.map(label => label.innerText.trim())
-              .filter(Boolean).join(" ");
-            return labelText
-              || element.getAttribute("aria-label")
-              || element.getAttribute("placeholder")
-              || element.getAttribute("name")
-              || element.id
-              || "";
+              .filter((text) => text && !isGenerated(text)).join(" ");
+            if (labelText) return labelText;
+            const aria = (element.getAttribute("aria-label") || "").trim();
+            if (aria && !isGenerated(aria)) return aria;
+            const placeholder = (element.getAttribute("placeholder") || "").trim();
+            if (placeholder && !isGenerated(placeholder)) return placeholder;
+            return "";
           };
 
-          return controls
+          const optionText = (element) => {
+            const direct = labelFor(element);
+            if (direct && (isOptionText(direct) || !isGenerated(direct))) {
+              const match = direct.match(/\\b(Yes|No|Si|Sí)\\b/i);
+              return match ? match[1] : direct;
+            }
+            const value = (element.getAttribute("value") || "").trim();
+            if (value && !isGenerated(value)) return value;
+            let sibling = element.nextElementSibling;
+            while (sibling) {
+              const text = visibleText(sibling);
+              const match = text.match(/^(Yes|No|Si|Sí)\\b/i);
+              if (match) return match[1];
+              sibling = sibling.nextElementSibling;
+            }
+            const parentText = visibleText(element.parentElement);
+            const match = parentText.match(/\\b(Yes|No|Si|Sí)\\b/i);
+            return match ? match[1] : "";
+          };
+
+          const labelledByText = (element) => {
+            if (!element) return "";
+            return (element.getAttribute("aria-labelledby") || "")
+              .split(/\\s+/)
+              .map((id) => visibleText(document.getElementById(id)))
+              .filter(isQuestionText)
+              .join(" ");
+          };
+
+          const previousQuestion = (element) => {
+            let node = element;
+            for (let depth = 0; depth < 8 && node; depth += 1) {
+              const named = labelledByText(node);
+              if (named) return named;
+              let previous = node.previousElementSibling;
+              while (previous) {
+                const text = visibleText(previous).replace(
+                  /this field is required/ig,
+                  ""
+                ).trim();
+                if (isQuestionText(text)) return text;
+                previous = previous.previousElementSibling;
+              }
+              node = node.parentElement;
+            }
+            return "";
+          };
+
+          const titleSelector = [
+            "legend",
+            ".fb-dash-form-element__label",
+            "[data-test-form-element-label]",
+            "[data-test-form-builder-radio-button-form-component__title]",
+            "label.fb-dash-form-element__label",
+          ].join(", ");
+
+          const questionLabel = (element) => {
+            const named = labelledByText(element);
+            if (named) return named;
+            const hosts = [
+              element.closest("[role='radiogroup']"),
+              element.closest("fieldset"),
+              element.closest(
+                "[data-test-form-element], .fb-dash-form-element, "
+                + ".jobs-easy-apply-form-element, "
+                + ".jobs-easy-apply-form-section__grouping, "
+                + "[id^='radio-group-']"
+              ),
+            ].filter(Boolean);
+            for (const host of hosts) {
+              const hostNamed = labelledByText(host);
+              if (hostNamed) return hostNamed;
+              const aria = (host.getAttribute("aria-label") || "").trim();
+              if (isQuestionText(aria)) return aria;
+              const title = visibleText(host.querySelector(titleSelector));
+              if (isQuestionText(title)) return title;
+            }
+            return previousQuestion(element) || labelFor(element);
+          };
+
+          const isVisibleHost = (element) => {
+            const host = element.closest(
+              "fieldset, [role='radiogroup'], [data-test-form-element], "
+              + ".fb-dash-form-element, label, body"
+            );
+            return Boolean(
+              element.getClientRects().length
+              || (host && host.getClientRects().length)
+            );
+          };
+
+          const fromInputs = controls
             .filter(element => {
               const type = (element.getAttribute("type") || "text").toLowerCase();
-              return type === "file" || element.getClientRects().length > 0;
+              if (type === "hidden") return false;
+              // LinkedIn hides native radios behind styled labels.
+              if (type === "file" || type === "radio") return isVisibleHost(element);
+              return element.getClientRects().length > 0;
             })
             .map((element, index) => {
               const tag = element.tagName.toLowerCase();
@@ -125,18 +250,68 @@ def page_to_form(page: Page, url: str | None = None, root: Any = None) -> Form:
                 : type === "radio" && element.name
                   ? [...root.querySelectorAll(
                       `input[type="radio"][name="${CSS.escape(element.name)}"]`
-                    )].map(radio => labelFor(radio)).filter(Boolean)
+                    )].map(radio => optionText(radio)).filter(Boolean)
                   : [];
+              let label = type === "radio"
+                ? questionLabel(element)
+                : labelFor(element);
+              if (type === "radio" && !isQuestionText(label)) {
+                label = previousQuestion(element) || label;
+              }
+              const requiredMark = /\\*/.test(
+                (element.closest("fieldset") || element).innerText || ""
+              );
               return {
-                id: element.id || element.name || `field-${index}`,
+                id: type === "radio" && element.name
+                  ? element.name
+                  : (element.id || element.name || `field-${index}`),
                 name: element.name || "",
-                label: labelFor(element),
+                label,
                 type,
                 options,
                 required: element.required
                   || element.getAttribute("aria-required") === "true"
+                  || (type === "radio" && requiredMark)
               };
             });
+
+          const seen = new Set(
+            fromInputs.flatMap((field) => [field.name, field.label].filter(Boolean))
+          );
+          const extras = [];
+          for (const box of root.querySelectorAll(
+            "fieldset, .fb-dash-form-element, "
+            + ".jobs-easy-apply-form-section__grouping, [role='radiogroup']"
+          )) {
+            const choices = [...box.querySelectorAll(
+              "[data-test-text-selectable-option], .fb-text-selectable__option, "
+              + ".fb-text-selectableoption, [role='radio'], input[type='radio']"
+            )];
+            if (choices.length < 2) continue;
+            let label = visibleText(box.querySelector(titleSelector));
+            if (!isQuestionText(label)) {
+              label = labelledByText(box) || previousQuestion(box);
+            }
+            if (!isQuestionText(label)) continue;
+            const name = box.querySelector("input[type='radio']")?.name || label;
+            if (seen.has(name) || seen.has(label)) continue;
+            seen.add(name);
+            seen.add(label);
+            extras.push({
+              id: name,
+              name,
+              label,
+              type: "radio",
+              options: choices.map((choice) => (
+                visibleText(choice)
+                || choice.getAttribute("data-test-text-selectable-option__input")
+                || choice.value
+                || ""
+              )).filter(Boolean),
+              required: /\\*/.test(box.innerText || ""),
+            });
+          }
+          return [...fromInputs, ...extras];
         }
         """
     )

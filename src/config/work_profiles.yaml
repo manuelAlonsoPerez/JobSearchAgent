@@ -77,6 +77,8 @@ shared:
     based_in: Oslo, Norway
     spain_residence_stated: false
     work_authorization_stated_on_cv: false
+    # Stated job-search availability. Used for "can you start in N days?"
+    available_within_days: 30
     will_consider:
       countries: [Spain]
       arrangements: [on-site, hybrid, remote]
@@ -442,7 +444,7 @@ work_profiles:
     title: ServiceNow Developer
     email: nexdevconsulting@outlook.com
     source_cvs:
-      - Manuel Alonso - ServiceNow Developer.pdf
+      - Manuel Alonso - Developer ServiceNow.pdf
     summary: >
       ServiceNow developer and consultant. Three years on the platform at
       Sopra Steria, through 2024, with CSA and CAD. The rest of the career is
@@ -535,7 +537,7 @@ work_profiles:
     title: AI Developer
     email: manuelalonsoper@gmail.com
     source_cvs:
-      - Manuel Alonso - ServiceNow Developer.pdf
+      - Manuel Alonso - Developer ServiceNow.pdf
       - Manuel Alonso - Full stack developer.pdf
       - Manuel Alonso - Full stack Developer (EN).pdf
       - Manuel Alonso - Fullstack Utvikler.pdf

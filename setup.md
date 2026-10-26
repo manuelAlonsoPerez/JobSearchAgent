@@ -178,8 +178,8 @@ Accepted Easy Apply jobs are currently stored as `dry_run_ready`. To smoke-test
 filling one Easy Apply modal (stops before Submit; discards the draft):
 
 ```bash
-PYTHONPATH=src python -m jobsearchagent.apply.smoke_apply \
-  https://www.linkedin.com/jobs/view/JOB_ID/
+# Uses src/jobsearchagent/apply/decision.json and the profile CV in src/docs
+PYTHONPATH=src python -m jobsearchagent.apply.smoke_apply
 ```
 
 Submission remains Part A7. Cover letters and tailored CVs are skipped for now.

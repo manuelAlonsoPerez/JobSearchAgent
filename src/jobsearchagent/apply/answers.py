@@ -20,12 +20,50 @@ from ..utils.profile import load_profile, profile_facts
 
 _DEFER_PATTERNS = re.compile(
     r"cefr|language level|english score|toefl|ielts"
-    r"|residenc|work authori|visa|citizenship|right to work"
-    r"|sponsored?|sponsorship|salary|compensation|expected pay"
+    r"|residenc|citizenship"
+    r"|salary|compensation|expected pay"
     r"|gender|race|ethnicity|disability|veteran|sexual orientation"
     r"|date of birth|birthdate|ssn|social security|national id",
     re.IGNORECASE,
 )
+_SPONSORSHIP = re.compile(
+    r"sponsor|visa status|employment visa",
+    re.IGNORECASE,
+)
+_WORK_AUTH = re.compile(
+    r"legally authorized|authori[sz]ed to work|right to work",
+    re.IGNORECASE,
+)
+_AVAILABILITY = re.compile(
+    r"\bstart\b|available (to start|immediately)|notice period|how soon",
+    re.IGNORECASE,
+)
+_START_DURATION = re.compile(
+    r"(\d+)\s*(day|days|week|weeks|month|months)",
+    re.IGNORECASE,
+)
+_DURATION_DAYS = {
+    "day": 1,
+    "days": 1,
+    "week": 7,
+    "weeks": 7,
+    "month": 30,
+    "months": 30,
+}
+_COUNTRY_ALIASES: dict[str, tuple[str, ...]] = {
+    "norway": ("norway", "norge", "norwegian"),
+    "spain": ("spain", "españa", "espanola", "spanish"),
+    "united kingdom": (
+        "united kingdom",
+        "uk",
+        "britain",
+        "great britain",
+        "england",
+        "scotland",
+        "wales",
+    ),
+    "germany": ("germany", "deutschland", "german"),
+}
 _IGNORE_PATTERNS = re.compile(
     r"^(search|select language|keyword)\b|_r_|typeahead",
     re.IGNORECASE,
@@ -100,9 +138,49 @@ def resolve_cv_path(
         if path.is_file():
             return path.resolve()
     for name in profile.get("source_cvs") or []:
-        path = SRC_DIR / "assets" / str(name)
-        if path.is_file():
-            return path.resolve()
+        path = _find_source_cv(str(name))
+        if path is not None:
+            return path
+    return None
+
+
+_CV_TOKEN_STOP = {"cv", "resume", "curriculum", "vitae", "pdf"}
+
+
+def _cv_directories() -> tuple[Path, ...]:
+    return (SRC_DIR / "docs", SRC_DIR / "assets")
+
+
+def _cv_tokens(name: str) -> frozenset[str]:
+    words = re.findall(r"[a-z0-9]+", Path(name).stem.casefold())
+    return frozenset(word for word in words if word not in _CV_TOKEN_STOP)
+
+
+def _same_cv_name(wanted: str, candidate: str) -> bool:
+    """True when two CV filenames share the same words, in any order."""
+
+    if Path(wanted).suffix.casefold() != Path(candidate).suffix.casefold():
+        return False
+    left = _cv_tokens(wanted)
+    right = _cv_tokens(candidate)
+    return bool(left) and left == right
+
+
+def _find_source_cv(name: str) -> Path | None:
+    """Find a profile CV under ``src/docs`` (then ``src/assets``)."""
+
+    wanted = Path(name).name.casefold()
+    for directory in _cv_directories():
+        exact = directory / name
+        if exact.is_file():
+            return exact.resolve()
+        if not directory.is_dir():
+            continue
+        for candidate in directory.iterdir():
+            if not candidate.is_file():
+                continue
+            if candidate.name.casefold() == wanted or _same_cv_name(name, candidate.name):
+                return candidate.resolve()
     return None
 
 
@@ -114,6 +192,7 @@ def resolve_field(
     cv_path: Path | None = None,
     facts: list[str] | None = None,
     context: Mapping[str, Any] | None = None,
+    job_location: str = "",
 ) -> FieldAnswer:
     """Return a profile-backed, deferred, or empty answer for one field."""
 
@@ -148,6 +227,17 @@ def resolve_field(
     if _DEFER_PATTERNS.search(label):
         return FieldAnswer(field_id=field.id, value=None, source="deferred")
 
+    constraint = _work_constraint_value(field, shared, candidate, job_location)
+    if constraint is None:
+        constraint = _availability_value(field, shared)
+    if constraint is not None:
+        if field.options:
+            matched = _best_option(str(constraint), field.options)
+            if matched is None:
+                return FieldAnswer(field_id=field.id, value=None, source="deferred")
+            constraint = matched
+        return FieldAnswer(field_id=field.id, value=constraint, source="profile")
+
     direct = _direct_profile_value(field, profile, candidate, shared)
     if direct is not None:
         if field.options:
@@ -173,6 +263,94 @@ def resolve_field(
         return FieldAnswer(field_id=field.id, value=None, source="deferred")
 
     return FieldAnswer(field_id=field.id, value=None, source="deferred")
+
+
+def _work_constraint_value(
+    field: FormField,
+    shared: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    job_location: str,
+) -> str | None:
+    """Answer sponsorship / work-auth Yes-No from stated work constraints."""
+
+    label = field.label or ""
+    if not (_SPONSORSHIP.search(label) or _WORK_AUTH.search(label)):
+        return None
+    constraints = shared.get("work_constraints")
+    if not isinstance(constraints, Mapping):
+        constraints = {}
+    based_in = str(
+        constraints.get("based_in") or candidate.get("based_in") or ""
+    )
+    will = constraints.get("will_consider")
+    considered = []
+    if isinstance(will, Mapping):
+        considered = [str(item) for item in will.get("countries") or []]
+    allowed = [based_in, *considered]
+    mentioned = _mentioned_country(f"{label} {job_location}")
+    authorized_there = bool(
+        mentioned and any(_same_country(mentioned, place) for place in allowed)
+    )
+
+    if _WORK_AUTH.search(label):
+        return "Yes" if authorized_there else "No"
+
+    # Sponsorship: not needed only when already authorized in that country.
+    if mentioned:
+        return "No" if authorized_there else "Yes"
+    if constraints.get("work_authorization_stated_on_cv") is False:
+        return "Yes"
+    return None
+
+
+def _availability_value(field: FormField, shared: Mapping[str, Any]) -> str | None:
+    """Answer start-date / notice questions from stated availability."""
+
+    label = field.label or ""
+    if not _AVAILABILITY.search(label):
+        return None
+    constraints = shared.get("work_constraints")
+    if not isinstance(constraints, Mapping):
+        return None
+    raw = constraints.get("available_within_days")
+    if raw is None:
+        return None
+    try:
+        available_days = int(raw)
+    except (TypeError, ValueError):
+        return None
+
+    asked = _asked_start_days(label)
+    if asked is not None:
+        return "Yes" if available_days <= asked else "No"
+    if re.search(r"immediately|asap|\bnow\b", label, re.IGNORECASE):
+        return "Yes" if available_days <= 7 else "No"
+    if field.type in {"text", "textarea", "number", "select"}:
+        if available_days <= 0:
+            return "Immediately"
+        return f"{available_days} days"
+    return None
+
+
+def _asked_start_days(label: str) -> int | None:
+    match = _START_DURATION.search(label)
+    if match is None:
+        return None
+    return int(match.group(1)) * _DURATION_DAYS[match.group(2).casefold()]
+
+
+def _mentioned_country(text: str) -> str | None:
+    folded = text.casefold()
+    for canonical, aliases in _COUNTRY_ALIASES.items():
+        if any(re.search(rf"\b{re.escape(alias)}\b", folded) for alias in aliases):
+            return canonical
+    return None
+
+
+def _same_country(left: str, right: str) -> bool:
+    first = _mentioned_country(left)
+    second = _mentioned_country(right)
+    return first is not None and first == second
 
 
 def _direct_profile_value(

@@ -184,3 +184,28 @@ PYTHONPATH=src python -m jobsearchagent.apply.agent
 
 Pass `--live` only when you want one real submission. `smoke_apply` remains the
 inspect-only runner that waits on Review and does not write the database.
+
+## 9. Run the batch CLI (discover → apply graph)
+
+`python -m jobsearchagent run` discovers LinkedIn jobs and walks each one through
+triage, Easy Apply fill, and record. `--dry-run` never clicks Submit:
+
+```bash
+PYTHONPATH=src python -m jobsearchagent run \
+  --query "ServiceNow developer" \
+  --location Spain \
+  --dry-run
+```
+
+`--easy-apply-only` is the default. Use `--include-external` to also record jobs
+that open an external apply URL. `--limit` caps new jobs. The command prints
+counts for discovered, duplicate, rejected, review, external, dry-run-ready, and
+applied.
+
+Search only, without opening Easy Apply:
+
+```bash
+PYTHONPATH=src python -m jobsearchagent discover \
+  --query "ServiceNow developer" \
+  --location Spain
+```

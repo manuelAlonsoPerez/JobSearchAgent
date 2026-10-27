@@ -52,12 +52,11 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 # Confirm Ollama is reachable
 curl http://localhost:11434/api/tags
 
-# Run the discovery-and-triage agent (does NOT submit applications)
-PYTHONPATH=src python -m jobsearchagent.linkedin_agent \
-  --query developer \
-  --max-jobs 10 \
-  --location Norway \
-  --location Remote
+# Discover and walk Easy Apply jobs (dry-run: fill, stop at Review)
+PYTHONPATH=src python -m jobsearchagent run \
+  --query "ServiceNow developer" \
+  --location Spain \
+  --dry-run
 ```
 
 On the first run, complete LinkedIn login in the Chromium window when prompted, then return to the
@@ -219,7 +218,8 @@ the location check.
 - SQLite stores normalized jobs, JEV outcomes, fit scores, routing status, and application links.
 - Stable LinkedIn IDs deduplicate URL variants and repeated searches.
 - `review_queue` records uncertain, external, and failed jobs without blocking later jobs.
-- A SQLite LangGraph checkpointer is available for the future thread-per-job graph.
+- A SQLite LangGraph checkpointer backs the thread-per-job apply graph
+  (`thread_id = linkedin:{source_job_id}`).
 
 ### Supporting services
 
@@ -252,12 +252,55 @@ PYTHONPATH=src python -m jobsearchagent.apply.agent --live
 `jobsearchagent.apply.smoke_apply` is the inspect-only runner: same fill,
 never records, and waits on Review until you press Enter.
 
+### Apply graph (G1)
+
+`jobsearchagent.graph` wires one job through triage → requirements → Easy Apply
+fill → submit → record. External, reject, and `needs_confirmation` jobs skip
+the form and go to record. `invoke_job(seed)` uses `SqliteSaver` so a stopped
+thread can resume.
+
+```python
+from jobsearchagent.graph import invoke_job, thread_id_for
+
+result = invoke_job(seed)  # thread_id = linkedin:{source_job_id}
+```
+
+CV and cover-letter writers (A4) and the validator (A5) are omitted for now.
+The form uploads the existing profile PDF from `src/docs`. A cover letter is
+used only if one is already on `state.artifacts`.
+
+### Batch runner (G2)
+
+`python -m jobsearchagent` is the ApplyPilot-style CLI:
+
+```bash
+# Search and persist unseen jobs
+PYTHONPATH=src python -m jobsearchagent discover \
+  --query "ServiceNow developer" \
+  --location Spain \
+  --limit 20
+
+# Full slice: discover → triage → Easy Apply fill → record
+PYTHONPATH=src python -m jobsearchagent run \
+  --query "ServiceNow developer" \
+  --location Spain \
+  --dry-run
+```
+
+`--easy-apply-only` is the default. `--include-external` also collects jobs that
+open an employer/ATS URL (those are recorded, never filled). `--dry-run` fills
+the modal and stops at Review. Repeat `--location` to search several markets.
+`--limit` caps new jobs. Each run prints counts for discovered, duplicate,
+rejected, review, external, dry-run-ready, and applied.
+
+`jobsearchagent.linkedin_agent` is still the triage-only runner if you do not
+want to open Easy Apply.
+
 ## Not implemented yet
 
 These build-guide stages remain:
 
-- Generate a tailored CV and cover letter (A4) and validate them (A5).
-- Wire the complete thread-per-job workflow through LangGraph (G1–G2).
+- Generate a tailored CV and cover letter (A4 GEN) and JEV-score them (A5).
 
 See `setup.md` for installation and browser-login instructions, and
 `src/docs/v1_build_guide.md` for the remaining implementation phases.

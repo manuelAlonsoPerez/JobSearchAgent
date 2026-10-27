@@ -352,7 +352,7 @@ DRY_RUN=true           # never actually submits while true
 
 # Phase 4 — Graph & runner
 
-### ☐ Part G1 — `graph.py` · `CODE`
+### ☑ Part G1 — `graph.py` · `CODE`
 - **Goal:** wire the LangGraph; **thread-per-job**
   (`thread_id = "linkedin:{source_job_id}"`, canonical URL fallback), `SqliteSaver` checkpointer.
 - **Depends on:** all A-parts.
@@ -362,7 +362,7 @@ DRY_RUN=true           # never actually submits while true
   (required failed→record(review)) → form → apply → record.
 - **Done when:** `graph.invoke(seed, thread)` runs end-to-end on one job and is resumable after a kill.
 
-### ☐ Part G2 — `cli.py` (+ `__main__.py`) · `CODE`
+### ☑ Part G2 — `cli.py` (+ `__main__.py`) · `CODE`
 - **Goal:** CLI batch runner (ApplyPilot-style).
 - **Commands:** `discover`, `run` (full slice over discovered jobs), `--dry-run`, `--limit`,
   `--query`, `--location`, `--easy-apply-only/--include-external`.

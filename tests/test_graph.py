@@ -91,6 +91,7 @@ class GraphRoutingTests(unittest.TestCase):
             record_fn=record_fn,
             form_fn=lambda state, config=None: forms.append("form") or {},
             apply_fn=lambda state, config=None: {},
+            output_fn=lambda _: None,
         ).invoke(_seed(), {"configurable": {"thread_id": "linkedin:reject"}})
         confirm = build_graph(
             checkpointer=InMemorySaver(),
@@ -103,6 +104,7 @@ class GraphRoutingTests(unittest.TestCase):
             record_fn=record_fn,
             form_fn=lambda state, config=None: forms.append("form") or {},
             apply_fn=lambda state, config=None: {},
+            output_fn=lambda _: None,
         ).invoke(_seed(), {"configurable": {"thread_id": "linkedin:confirm"}})
 
         self.assertEqual(forms, [])
@@ -139,11 +141,49 @@ class GraphRoutingTests(unittest.TestCase):
             form_fn=form_fn,
             apply_fn=apply_fn,
             record_fn=record_fn,
+            output_fn=lambda _: None,
         ).invoke(_seed(), {"configurable": {"thread_id": "linkedin:123"}})
 
         self.assertEqual(order, ["form", "apply", "record"])
         self.assertEqual(result.get("apply_status"), "dry_run_ready")
         self.assertEqual(result.get("profile_id"), "servicenow-developer")
+
+    def test_triage_prints_jev_feedback(self) -> None:
+        lines: list[str] = []
+
+        build_graph(
+            checkpointer=InMemorySaver(),
+            triage_fn=lambda state: {
+                "outcome": "accept",
+                "profile_id": "servicenow-developer",
+                "fit_score": 1.4,
+                "triage_details": {
+                    "profile": {
+                        "choice": "servicenow-developer",
+                        "source": "title_and_skills",
+                    },
+                    "location_eligibility": {
+                        "choice": "eligible",
+                        "confidence": 0.9,
+                        "rationale": "Spain is listed.",
+                    },
+                    "non_location_outcome": {"choice": "accept"},
+                    "fit": {"score": 1.4},
+                },
+            },
+            form_fn=lambda state, config=None: {"apply_status": "dry_run_ready"},
+            apply_fn=lambda state, config=None: {},
+            record_fn=lambda state, **kwargs: {},
+            output_fn=lines.append,
+        ).invoke(_seed(), {"configurable": {"thread_id": "linkedin:jev-log"}})
+
+        text = "\n".join(lines)
+        self.assertIn("JEV triage:", text)
+        self.assertIn("profile=servicenow-developer", text)
+        self.assertIn("location=eligible", text)
+        self.assertIn("outcome=accept", text)
+        self.assertIn("Spain is listed.", text)
+        self.assertIn('"fit_score": 1.4', text)
 
     def test_invoke_resumes_after_a_kill(self) -> None:
         saver = InMemorySaver()
@@ -168,6 +208,7 @@ class GraphRoutingTests(unittest.TestCase):
             ),
             apply_fn=lambda state, config=None: {"apply_status": "dry_run_ready"},
             record_fn=lambda state, **kw: {},
+            output_fn=lambda _: None,
         )
 
         paused = graph.invoke(_seed(), config)

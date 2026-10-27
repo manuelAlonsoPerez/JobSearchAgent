@@ -17,9 +17,19 @@ import httpx
 from .browser import session as browser_session
 from .config import get_settings
 from .database import init_db
-from .discovery.linkedin import LinkedInDiscovery, SearchFilters
+from .discovery.linkedin import (
+    POSTED_WITHIN_SECONDS,
+    SORT_CODES,
+    WORK_TYPE_CODES,
+    LinkedInDiscovery,
+    SearchFilters,
+)
 from .graph import invoke_job
 from .models import JobState
+
+
+def _emit(message: str) -> None:
+    print(message, flush=True)
 
 DiscoverFn = Callable[..., "DiscoverResult"]
 InvokeFn = Callable[..., JobState]
@@ -95,17 +105,18 @@ def discover_jobs(
     *,
     limit: int = 20,
     easy_apply_only: bool = True,
+    filters: SearchFilters | None = None,
     database_path: str | Path | None = None,
-    output_fn: Callable[[str], None] = print,
+    output_fn: Callable[[str], None] = _emit,
     input_fn: Callable[[str], str] = input,
 ) -> DiscoverResult:
     """Search LinkedIn and persist unseen jobs. Skips jobs already in SQLite."""
 
     if limit < 1:
         raise ValueError("limit must be at least 1")
-    places = _locations(locations)
+    search = filters or SearchFilters(easy_apply=easy_apply_only)
+    places = _search_places(locations, search)
     init_db(database_path)
-    filters = SearchFilters(easy_apply=easy_apply_only)
     stats: dict[str, int] = {"duplicate": 0}
     discovery = LinkedInDiscovery(input_fn=input_fn, output_fn=output_fn)
     jobs: list[JobState] = []
@@ -123,7 +134,7 @@ def discover_jobs(
                 query,
                 location,
                 search_limit,
-                filters=filters,
+                filters=search,
                 stats=stats,
             )
             jobs.extend(found)
@@ -138,8 +149,9 @@ def run_batch(
     limit: int = 20,
     dry_run: bool | None = True,
     easy_apply_only: bool = True,
+    filters: SearchFilters | None = None,
     database_path: str | Path | None = None,
-    output_fn: Callable[[str], None] = print,
+    output_fn: Callable[[str], None] = _emit,
     input_fn: Callable[[str], str] = input,
     discover_fn: DiscoverFn | None = None,
     invoke_fn: InvokeFn | None = None,
@@ -155,6 +167,7 @@ def run_batch(
         locations,
         limit=limit,
         easy_apply_only=easy_apply_only,
+        filters=filters,
         database_path=database_path,
         output_fn=output_fn,
         input_fn=input_fn,
@@ -207,19 +220,21 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(
     argv: Sequence[str] | None = None,
     *,
-    output_fn: Callable[[str], None] = print,
+    output_fn: Callable[[str], None] = _emit,
     discover_fn: DiscoverFn | None = None,
     invoke_fn: InvokeFn | None = None,
 ) -> int:
     arguments = parse_args(argv)
     locations = arguments.locations
     dry_run = True if arguments.dry_run else None
+    filters = _filters_from_args(arguments)
     if arguments.command == "discover":
         result = (discover_fn or discover_jobs)(
             arguments.query,
             locations or _locations(None),
             limit=arguments.limit,
             easy_apply_only=arguments.easy_apply_only,
+            filters=filters,
             database_path=arguments.db_path,
             output_fn=output_fn,
         )
@@ -241,6 +256,7 @@ def main(
         limit=arguments.limit,
         dry_run=dry_run,
         easy_apply_only=arguments.easy_apply_only,
+        filters=filters,
         database_path=arguments.db_path,
         output_fn=output_fn,
         discover_fn=discover_fn,
@@ -263,6 +279,33 @@ def _add_shared_flags(parser: argparse.ArgumentParser) -> None:
         action="append",
         dest="locations",
         help="Search location. Repeat for several. Default: JOB_LOCATIONS.",
+    )
+    parser.add_argument(
+        "--geo-id",
+        dest="geo_id",
+        default=None,
+        help=(
+            "LinkedIn region geoId instead of a text location, "
+            "e.g. EMEA = 91000007. Overrides --location for the search."
+        ),
+    )
+    parser.add_argument(
+        "--posted-within",
+        choices=sorted(POSTED_WITHIN_SECONDS),
+        default="week",
+        help="Recency filter (f_TPR). Default: week.",
+    )
+    parser.add_argument(
+        "--work-type",
+        choices=[*sorted(WORK_TYPE_CODES), "any"],
+        default="remote",
+        help="Work-type filter (f_WT). 'any' removes it. Default: remote.",
+    )
+    parser.add_argument(
+        "--sort",
+        choices=sorted(SORT_CODES),
+        default="relevance",
+        help="Result ordering (sortBy). Default: relevance.",
     )
     parser.add_argument(
         "--limit",
@@ -295,6 +338,28 @@ def _add_shared_flags(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Override DB_PATH from .env.",
     )
+
+
+def _filters_from_args(arguments: argparse.Namespace) -> SearchFilters:
+    return SearchFilters(
+        geo_id=arguments.geo_id,
+        posted_within_seconds=POSTED_WITHIN_SECONDS[arguments.posted_within],
+        work_type=(
+            None
+            if arguments.work_type == "any"
+            else WORK_TYPE_CODES[arguments.work_type]
+        ),
+        easy_apply=arguments.easy_apply_only,
+        sort=SORT_CODES[arguments.sort],
+    )
+
+
+def _search_places(locations: Sequence[str], filters: SearchFilters) -> list[str]:
+    """A geoId is one region search; otherwise iterate text locations."""
+
+    if filters.geo_id:
+        return [""]
+    return _locations(locations)
 
 
 def _locations(locations: Sequence[str] | None) -> list[str]:

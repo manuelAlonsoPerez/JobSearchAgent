@@ -283,15 +283,19 @@ PYTHONPATH=src python -m jobsearchagent discover \
 # Full slice: discover → triage → Easy Apply fill → record
 PYTHONPATH=src python -m jobsearchagent run \
   --query "ServiceNow developer" \
-  --location Spain \
+  --geo-id 91000007 \
+  --work-type remote \
   --dry-run
 ```
 
 `--easy-apply-only` is the default. `--include-external` also collects jobs that
 open an employer/ATS URL (those are recorded, never filled). `--dry-run` fills
-the modal and stops at Review. Repeat `--location` to search several markets.
-`--limit` caps new jobs. Each run prints counts for discovered, duplicate,
-rejected, review, external, dry-run-ready, and applied.
+the modal and stops at Review. `--geo-id` (e.g. EMEA `91000007`) replaces
+`--location` for the search. `--work-type`, `--posted-within`, and `--sort`
+match the LinkedIn-agent filters. Repeat `--location` to search several
+markets when no geo id is set. `--limit` caps new jobs. Each run prints counts
+for discovered, duplicate, rejected, review, external, dry-run-ready, and
+applied.
 
 `jobsearchagent.linkedin_agent` is still the triage-only runner if you do not
 want to open Easy Apply.
@@ -376,10 +380,7 @@ sqlite3 ~/.jobsearchagent/jobsearch.db "PRAGMA table_info(jobs);"
 List the latest discovered jobs:
 
 ```sql
-SELECT discovered_at, title, company, location, outcome, fit_score, apply_status
-FROM jobs
-ORDER BY discovered_at DESC
-LIMIT 20;
+SELECT discovered_at, title, company, location, outcome, fit_score, apply_status FROM jobs ORDER BY discovered_at DESC LIMIT 20;
 ```
 
 List jobs JEV accepted:

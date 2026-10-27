@@ -13,6 +13,8 @@ Easy Apply uploads the existing profile PDF from ``src/docs``.
 
 from __future__ import annotations
 
+import inspect
+import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Literal
@@ -88,8 +90,9 @@ def build_graph(
     )
 
     def triage_node(state: JobState) -> dict[str, Any]:
-        result = dict(triage_fn(state))
-        result.pop("triage_details", None)
+        result = dict(_call_triage(triage_fn, state, output_fn))
+        details = result.pop("triage_details", None)
+        _log_triage_feedback(state, result, details, output_fn)
         result["messages"] = [
             {"role": "system", "content": f"triage:{result.get('outcome')}"}
         ]
@@ -179,6 +182,82 @@ def invoke_job(
     )
     config = {"configurable": {"thread_id": thread_id or thread_id_for(seed)}}
     return compiled.invoke(seed, config)
+
+
+def _call_triage(
+    triage_fn: Callable[..., Mapping[str, Any]],
+    state: JobState,
+    output_fn: Callable[[str], None],
+) -> Mapping[str, Any]:
+    """Run triage and forward JEV progress when the callable accepts it."""
+
+    try:
+        parameters = inspect.signature(triage_fn).parameters
+    except (TypeError, ValueError):
+        return triage_fn(state)
+    if "progress" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    ):
+        return triage_fn(state, progress=output_fn)
+    return triage_fn(state)
+
+
+def _log_triage_feedback(
+    state: JobState,
+    result: Mapping[str, Any],
+    details: Any,
+    output_fn: Callable[[str], None],
+) -> None:
+    """Print the JEV answers the LinkedIn agent used to show after triage."""
+
+    details = details if isinstance(details, Mapping) else {}
+    location = details.get("location_eligibility") or {}
+    skill = details.get("non_location_outcome") or {}
+    fit = details.get("fit") or {}
+    location_choice = (
+        location.get("choice") if isinstance(location, Mapping) else None
+    )
+    output_fn(
+        "JEV triage: "
+        f"profile={result.get('profile_id') or '-'} "
+        f"location={location_choice or '-'} "
+        f"outcome={result.get('outcome') or '-'} "
+        f"fit={result.get('fit_score')}"
+    )
+    if result.get("review_reason"):
+        output_fn(f"  review_reason: {result.get('review_reason')}")
+    for label, answer in (
+        ("location_eligibility", location),
+        ("non_location_outcome", skill),
+        ("fit", fit),
+    ):
+        if isinstance(answer, Mapping) and answer:
+            reason = (
+                answer.get("rationale")
+                or answer.get("reasoning")
+                or answer.get("reason")
+                or answer.get("explanation")
+            )
+            if reason:
+                output_fn(f"  {label}: {reason}")
+    output_fn(
+        json.dumps(
+            {
+                "url": state.get("url"),
+                "title": state.get("title"),
+                "company": state.get("company"),
+                "location": state.get("location"),
+                "profile_id": result.get("profile_id"),
+                "outcome": result.get("outcome"),
+                "fit_score": result.get("fit_score"),
+                "review_reason": result.get("review_reason"),
+                "details": details,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
 
 
 def _route_start(state: JobState) -> Literal["triage", "record"]:

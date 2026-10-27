@@ -191,11 +191,12 @@ inspect-only runner that waits on Review and does not write the database.
 triage, Easy Apply fill, and record. `--dry-run` never clicks Submit:
 
 ```bash
-PYTHONPATH=src python -m jobsearchagent run \
-  --query "ServiceNow developer" \
-  --location Spain \
-  --dry-run
+PYTHONPATH=src python -m jobsearchagent run --query "ServiceNow developer" --geo-id 91000007 --work-type remote --dry-run
 ```
+
+`--geo-id 91000007` is EMEA and replaces `--location` for the search. Add
+`--work-type remote` (the default), `--posted-within week`, or `--sort recent`
+to match a LinkedIn-agent search.
 
 `--easy-apply-only` is the default. Use `--include-external` to also record jobs
 that open an external apply URL. `--limit` caps new jobs. The command prints

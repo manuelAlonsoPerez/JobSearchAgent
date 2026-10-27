@@ -7,12 +7,14 @@ from typing import Any
 
 from jobsearchagent.cli import (
     DiscoverResult,
+    _search_places,
     classify_result,
     format_counts,
     main,
     parse_args,
     run_batch,
 )
+from jobsearchagent.discovery.linkedin import WORK_TYPE_CODES, SearchFilters
 from jobsearchagent.models import JobState
 
 
@@ -49,6 +51,23 @@ class ParseArgsTests(unittest.TestCase):
         self.assertTrue(args.dry_run)
         self.assertTrue(args.easy_apply_only)
         self.assertEqual(args.limit, 20)
+
+    def test_run_accepts_geo_id_and_work_type(self) -> None:
+        args = parse_args(
+            [
+                "run",
+                "--query",
+                "ServiceNow developer",
+                "--geo-id",
+                "91000007",
+                "--work-type",
+                "remote",
+                "--dry-run",
+            ]
+        )
+        self.assertEqual(args.geo_id, "91000007")
+        self.assertEqual(args.work_type, "remote")
+        self.assertTrue(args.dry_run)
 
     def test_include_external_and_limit(self) -> None:
         args = parse_args(
@@ -173,6 +192,25 @@ class RunBatchTests(unittest.TestCase):
         self.assertEqual(counts.discovered, 0)
         self.assertEqual(counts.duplicate, 5)
 
+    def test_geo_id_is_passed_to_discover(self) -> None:
+        seen: list[str | None] = []
+
+        def discover_fn(*_args: Any, **kwargs: Any) -> DiscoverResult:
+            filters = kwargs.get("filters")
+            seen.append(getattr(filters, "geo_id", None))
+            return DiscoverResult(jobs=[], duplicate=0)
+
+        run_batch(
+            "ServiceNow developer",
+            ["Spain"],
+            filters=SearchFilters(geo_id="91000007"),
+            discover_fn=discover_fn,
+            invoke_fn=lambda seed, **kw: seed,
+            output_fn=lambda _: None,
+            skip_preflight=True,
+        )
+        self.assertEqual(seen, ["91000007"])
+
     def test_include_external_is_passed_to_discover(self) -> None:
         seen: list[bool] = []
 
@@ -227,6 +265,32 @@ class MainTests(unittest.TestCase):
         self.assertIn("dry-run-ready: 1", text)
         self.assertIn("applied: 0", text)
 
+    def test_main_forwards_geo_id_and_work_type(self) -> None:
+        seen: list[SearchFilters] = []
+
+        def discover_fn(*_args: Any, **kwargs: Any) -> DiscoverResult:
+            seen.append(kwargs["filters"])
+            return DiscoverResult(jobs=[], duplicate=0)
+
+        main(
+            [
+                "run",
+                "--query",
+                "ServiceNow developer",
+                "--geo-id",
+                "91000007",
+                "--work-type",
+                "remote",
+                "--dry-run",
+            ],
+            output_fn=lambda _: None,
+            discover_fn=discover_fn,
+            invoke_fn=lambda seed, **kw: seed,
+        )
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0].geo_id, "91000007")
+        self.assertEqual(seen[0].work_type, WORK_TYPE_CODES["remote"])
+
     def test_discover_does_not_invoke_graph(self) -> None:
         invoked: list[str] = []
 
@@ -247,3 +311,14 @@ class MainTests(unittest.TestCase):
         self.assertEqual(invoked, [])
         self.assertIn("discovered: 1", "\n".join(lines))
         self.assertIn("applied: 0", "\n".join(lines))
+
+
+class SearchPlaceTests(unittest.TestCase):
+    def test_geo_id_replaces_text_locations(self) -> None:
+        self.assertEqual(
+            _search_places(["Spain", "Remote"], SearchFilters(geo_id="91000007")),
+            [""],
+        )
+
+    def test_work_type_remote_code(self) -> None:
+        self.assertEqual(WORK_TYPE_CODES["remote"], "2")

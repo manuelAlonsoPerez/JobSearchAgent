@@ -307,7 +307,7 @@ DRY_RUN=true           # never actually submits while true
 
 # Phase 3 — Apply & record
 
-### ☐ Part A6 — `apply/form.py` · `BROWSER`+`JEV`+`GEN`
+### ☑ Part A6 — `apply/form.py` · `BROWSER`+`JEV`+`GEN`
 - **Goal:** walk the live, multi-step LinkedIn Easy Apply modal and answer every supported field.
 - **Depends on:** F4c, F4a, F4b.
 - **Behaviour:**
@@ -324,7 +324,7 @@ DRY_RUN=true           # never actually submits while true
 - **Done when:** a multi-step Easy Apply modal reaches Review with its known fields answered and CV
   uploaded; a planted unknown screening question routes to review and is never guessed.
 
-### ☐ Part A7 — `apply/submit.py` · `BROWSER`
+### ☑ Part A7 — `apply/submit.py` · `BROWSER`
 - **Goal:** submit the prepared Easy Apply modal using the hand-logged-in LinkedIn profile.
 - **Depends on:** F4c, A6.
 - **Behaviour:**
@@ -341,7 +341,7 @@ DRY_RUN=true           # never actually submits while true
 - **Done when:** dry run reaches Review without submission; a test double confirms only one submit
   click in live mode; external jobs and browser blockers are caught and queued rather than raised.
 
-### ☐ Part A8 — `apply/record.py` · `CODE`
+### ☑ Part A8 — `apply/record.py` · `CODE`
 - **Goal:** persist terminal state; write failures/`needs_confirmation`/blocked/external applications
   to `review_queue` with a retry link.
 - **Depends on:** F3.

@@ -20,6 +20,7 @@ from ..triage.easy_apply import (
     _MAX_MODAL_STEPS,
     advance_modal,
     easy_apply_modal_open,
+    field_looks_like_cover_letter,
     field_looks_like_cv,
     field_looks_like_saved_resume,
     modal_root,
@@ -31,6 +32,7 @@ from ..utils.profile import load_profile, profile_facts
 from .answers import (
     has_related_facts,
     must_defer,
+    resolve_cover_letter,
     resolve_cv_path,
     resolve_field,
 )
@@ -78,6 +80,7 @@ def build_and_answer_form(
     profile = context["profile"]
     facts = profile_facts(profile_id, config)
     resume = resolve_cv_path(state, profile, override=cv_path)
+    letter = resolve_cover_letter(state)
     settings = get_settings()
     history: list[dict[str, Any]] = [
         dict(message) if isinstance(message, Mapping) else {"role": "user", "content": str(message)}
@@ -128,6 +131,7 @@ def build_and_answer_form(
             context=context,
             facts=facts,
             cv_path=resume,
+            cover_letter=letter,
             job_location=str(state.get("location") or ""),
             jev=jev,
             chat_fn=chat_fn,
@@ -194,6 +198,7 @@ def _answer_step(
     context: Mapping[str, Any],
     facts: list[str],
     cv_path: Path | None,
+    cover_letter: str | Path | None,
     job_location: str,
     jev: Jev | None,
     chat_fn: ChatFn | None,
@@ -209,7 +214,7 @@ def _answer_step(
         )
 
     for field in fields:
-        if uploaded and (
+        if uploaded and not field_looks_like_cover_letter(field.label or field.id) and (
             field.type == "file"
             or field_looks_like_cv(field.label or field.id)
             or field_looks_like_saved_resume(field.label or field.id)
@@ -229,6 +234,7 @@ def _answer_step(
             profile_id=profile_id,
             profile_config=profile_config,
             cv_path=cv_path,
+            cover_letter=cover_letter,
             facts=facts,
             context=context,
             job_location=job_location,

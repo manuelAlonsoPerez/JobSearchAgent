@@ -230,35 +230,34 @@ the location check.
 - `utils/pdf.py`: renders generated plain-text artifacts as A4 PDFs.
 - `linkedin_smoke.py`: diagnostic scraper/JEV runner retained for testing and troubleshooting.
 
-### Easy Apply filling (smoke)
+### Easy Apply agent
 
-`jobsearchagent.apply.smoke_apply` opens one job URL, fills profile-backed Easy
-Apply fields, uploads the existing source CV when a resume field is present,
-and **stops on Review**. It never clicks **Submit application**. Cover letters
-and tailored CVs are skipped in this pass; CEFR, residence, English-score, and
-unknown screening questions are deferred rather than guessed.
-
-Defaults to `src/jobsearchagent/apply/decision.json` (the JEV agent output,
-including `url` and `profile_id`). On the resume step it uploads the matching
-source CV from `src/docs` for that profile
-(`Manuel Alonso - Developer ServiceNow.pdf` for `servicenow-developer`).
+`jobsearchagent.apply.agent` fills one Easy Apply modal from
+`apply/decision.json` (or a URL / job id), then either stops at Review
+(`DRY_RUN=true`, default) or clicks **Submit application** once (`--live`).
+The result is written to `jobs`; failed, manual, external, and
+`needs_confirmation` jobs also go to `review_queue` with a retry link.
+The daily cap (`LINKEDIN_DAILY_APPLY_LIMIT`) is enforced before a live
+submit. Cover letters are used only when `state.artifacts["cover_letter"]`
+exists and the modal has a matching field.
 
 ```bash
-# Uses apply/decision.json and the profile CV in src/docs
-PYTHONPATH=src python -m jobsearchagent.apply.smoke_apply
+# Dry run: fill, stop at Review, discard the draft, record dry_run_ready
+PYTHONPATH=src python -m jobsearchagent.apply.agent
+
+# Live submit (overrides DRY_RUN for this one job)
+PYTHONPATH=src python -m jobsearchagent.apply.agent --live
 ```
 
-Optional: `--from-json other.json`, a job URL, `--profile-id`, or `--cv`. The
-browser stays on Review until you press Enter, then the draft is discarded.
+`jobsearchagent.apply.smoke_apply` is the inspect-only runner: same fill,
+never records, and waits on Review until you press Enter.
 
 ## Not implemented yet
 
-The current production command does **not** apply for jobs. These build-guide stages remain:
+These build-guide stages remain:
 
-- Generate a tailored CV and cover letter.
-- Validate generated artifacts against profile facts and JEV quality thresholds.
-- Submit the prepared Easy Apply modal (A7) or record the result (A8).
-- Wire the complete thread-per-job workflow through LangGraph.
+- Generate a tailored CV and cover letter (A4) and validate them (A5).
+- Wire the complete thread-per-job workflow through LangGraph (G1–G2).
 
 See `setup.md` for installation and browser-login instructions, and
 `src/docs/v1_build_guide.md` for the remaining implementation phases.

@@ -184,12 +184,31 @@ def _find_source_cv(name: str) -> Path | None:
     return None
 
 
+def resolve_cover_letter(state: Mapping[str, Any]) -> str | Path | None:
+    """Return a cover-letter path or text from ``state.artifacts``, if present."""
+
+    artifacts = state.get("artifacts") or {}
+    letter = artifacts.get("cover_letter") if isinstance(artifacts, Mapping) else None
+    if letter is None:
+        return None
+    stored = getattr(letter, "path", None)
+    if stored:
+        path = Path(str(stored)).expanduser()
+        if path.is_file():
+            return path.resolve()
+    content = getattr(letter, "content", None)
+    if content:
+        return str(content)
+    return None
+
+
 def resolve_field(
     field: FormField,
     *,
     profile_id: str,
     profile_config: Mapping[str, Any] | None = None,
     cv_path: Path | None = None,
+    cover_letter: str | Path | None = None,
     facts: list[str] | None = None,
     context: Mapping[str, Any] | None = None,
     job_location: str = "",
@@ -208,6 +227,12 @@ def resolve_field(
 
     if field.type == "file" or field_looks_like_cv(label):
         if field_looks_like_cover_letter(label):
+            if cover_letter is not None:
+                return FieldAnswer(
+                    field_id=field.id,
+                    value=str(cover_letter),
+                    source="profile",
+                )
             return FieldAnswer(
                 field_id=field.id,
                 value=None,
@@ -222,6 +247,12 @@ def resolve_field(
         return FieldAnswer(field_id=field.id, value=None, source="deferred")
 
     if field_looks_like_cover_letter(label):
+        if cover_letter is not None:
+            return FieldAnswer(
+                field_id=field.id,
+                value=str(cover_letter),
+                source="profile",
+            )
         return FieldAnswer(field_id=field.id, value=None, source="deferred")
 
     if _DEFER_PATTERNS.search(label):

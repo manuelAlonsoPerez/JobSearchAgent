@@ -7,7 +7,13 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 from urllib.parse import parse_qs, urlsplit
+
+from playwright.sync_api import (
+    Error as PlaywrightError,
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 from jobsearchagent.database import (
     add_to_review,
@@ -17,10 +23,11 @@ from jobsearchagent.database import (
     seen,
     upsert_job,
 )
-from jobsearchagent.discovery.linkedin import LinkedInDiscovery
+from jobsearchagent.config import load_work_profiles
+from jobsearchagent.discovery.linkedin import LinkedInDiscovery, SearchFilters
 from jobsearchagent.linkedin_agent import LinkedInAgent
 from jobsearchagent.models import JobState
-from jobsearchagent.triage import triage
+from jobsearchagent.triage import select_profile, triage
 from scripts.delete_jobs import delete_jobs
 
 
@@ -28,10 +35,12 @@ class StubJev:
     def __init__(
         self,
         *,
+        profile: str = "frontend",
         location: str = "eligible",
         outcome: str = "accept",
         fit: float = 1.5,
     ) -> None:
+        self.profile = profile
         self.location = location
         self.outcome = outcome
         self.fit = fit
@@ -39,9 +48,8 @@ class StubJev:
 
     def ask(self, state: Any, questions: Any) -> dict[str, Any]:
         self.requests.append({"state": state, "questions": questions})
-        if "profile" in questions:
-            return {"profile": {"choice": "frontend", "confidence": 0.9}}
         return {
+            "profile": {"choice": self.profile, "confidence": 0.9},
             "location_eligibility": {"choice": self.location},
             "outcome": {"choice": self.outcome},
             "fit": {"score": self.fit},
@@ -62,6 +70,17 @@ PROFILE_CONFIG = {
             "years_relevant": 8,
             "skills": [{"name": "React"}, {"name": "TypeScript"}],
             "matching_titles": ["Frontend Developer"],
+        },
+        "servicenow-developer": {
+            "title": "ServiceNow Developer",
+            "summary": "ServiceNow developer with ITSM and Flow Designer",
+            "years_relevant": 3,
+            "skills": [
+                {"name": "ServiceNow"},
+                {"name": "ITSM"},
+                {"name": "Flow Designer"},
+            ],
+            "matching_titles": ["ServiceNow Developer"],
         },
     },
 }
@@ -137,6 +156,33 @@ class DatabaseTests(unittest.TestCase):
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_navigation_retries_when_linkedin_has_no_document_body(self) -> None:
+        page = MagicMock()
+        page.wait_for_function.side_effect = [
+            PlaywrightTimeoutError("body unavailable"),
+            None,
+        ]
+        page.locator.return_value.count.return_value = 0
+
+        LinkedInDiscovery._navigate(page, "https://www.linkedin.com/feed/")
+
+        self.assertEqual(page.goto.call_count, 2)
+        page.wait_for_timeout.assert_called_once_with(1_500)
+
+    def test_navigation_retries_on_transient_network_error(self) -> None:
+        page = MagicMock()
+        page.goto.side_effect = [
+            PlaywrightError("net::ERR_NETWORK_CHANGED"),
+            None,
+        ]
+        page.wait_for_function.return_value = None
+        page.locator.return_value.count.return_value = 0
+
+        LinkedInDiscovery._navigate(page, "https://www.linkedin.com/jobs/view/1/")
+
+        self.assertEqual(page.goto.call_count, 2)
+        page.wait_for_timeout.assert_called_once_with(1_500)
+
     def test_search_url_supports_linkedin_result_pages(self) -> None:
         query = parse_qs(
             urlsplit(
@@ -153,6 +199,45 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(query["f_WT"], ["2"])
         self.assertEqual(query["f_AL"], ["true"])
         self.assertEqual(query["start"], ["25"])
+
+    def test_geo_id_filter_targets_a_region_and_drops_location(self) -> None:
+        query = parse_qs(
+            urlsplit(
+                LinkedInDiscovery.build_search_url(
+                    "ServiceNow",
+                    "",
+                    filters=SearchFilters(geo_id="91000007"),
+                )
+            ).query
+        )
+
+        self.assertEqual(query["keywords"], ["ServiceNow"])
+        self.assertEqual(query["geoId"], ["91000007"])
+        self.assertNotIn("location", query)
+        self.assertEqual(query["f_TPR"], ["r604800"])
+        self.assertEqual(query["f_WT"], ["2"])
+        self.assertEqual(query["f_AL"], ["true"])
+
+    def test_filters_can_widen_work_type_and_disable_easy_apply(self) -> None:
+        query = parse_qs(
+            urlsplit(
+                LinkedInDiscovery.build_search_url(
+                    "React",
+                    "Norway",
+                    filters=SearchFilters(
+                        work_type=None,
+                        easy_apply=False,
+                        posted_within_seconds=86_400,
+                        sort="DD",
+                    ),
+                )
+            ).query
+        )
+
+        self.assertNotIn("f_WT", query)
+        self.assertNotIn("f_AL", query)
+        self.assertEqual(query["f_TPR"], ["r86400"])
+        self.assertEqual(query["sortBy"], ["DD"])
 
     def test_title_filters_come_from_search_configuration(self) -> None:
         discovery = LinkedInDiscovery(
@@ -185,10 +270,80 @@ class TriageTests(unittest.TestCase):
         self.assertEqual(update["profile_id"], "frontend")
         self.assertEqual(update["outcome"], "accept")
         self.assertEqual(update["fit_score"], 1.5)
-        reject_criteria = jev.requests[1]["questions"]["outcome"]["criteria"][
+        self.assertEqual(len(jev.requests), 1)
+        self.assertEqual(
+            set(jev.requests[0]["questions"]),
+            {"location_eligibility", "outcome", "fit"},
+        )
+        self.assertNotIn("profile", jev.requests[0]["questions"])
+        self.assertNotIn("profile_summaries", jev.requests[0]["state"])
+        self.assertNotIn("profile_candidates", jev.requests[0]["state"])
+        self.assertNotIn(
+            "experience",
+            jev.requests[0]["state"]["selected_profile"],
+        )
+        reject_criteria = jev.requests[0]["questions"]["outcome"]["criteria"][
             "reject"
         ]
         self.assertIn("secondary-skill gaps", reject_criteria)
+
+    def test_selects_servicenow_profile_from_title_without_jev(self) -> None:
+        self.assertEqual(
+            select_profile(
+                JobState(title="ServiceNow Architect", raw_description=""),
+                PROFILE_CONFIG["work_profiles"],
+            ),
+            "servicenow-developer",
+        )
+        self.assertEqual(
+            select_profile(
+                JobState(title="Frontend Developer", raw_description="React"),
+                PROFILE_CONFIG["work_profiles"],
+            ),
+            "frontend",
+        )
+        self.assertEqual(
+            select_profile(
+                JobState(title="ServiceNow Architect", raw_description=""),
+                load_work_profiles()["work_profiles"],
+            ),
+            "servicenow-developer",
+        )
+
+    def test_clear_servicenow_job_is_accepted_with_servicenow_profile(self) -> None:
+        update = triage(
+            JobState(
+                title="ServiceNow Developer",
+                location="Norway",
+                raw_description=(
+                    "Develop ServiceNow ITSM workflows using Flow Designer."
+                ),
+            ),
+            jev=StubJev(
+                profile="servicenow-developer",
+                outcome="accept",
+                fit=1.8,
+            ),
+            locations=["Norway", "Remote"],
+            profile_config=PROFILE_CONFIG,
+        )
+
+        self.assertEqual(update["profile_id"], "servicenow-developer")
+        self.assertEqual(update["outcome"], "accept")
+
+    def test_off_target_job_is_rejected(self) -> None:
+        update = triage(
+            JobState(
+                title="Sales Director",
+                location="Norway",
+                raw_description="Lead enterprise sales and revenue strategy.",
+            ),
+            jev=StubJev(outcome="reject", fit=0.1),
+            locations=["Norway", "Remote"],
+            profile_config=PROFILE_CONFIG,
+        )
+
+        self.assertEqual(update["outcome"], "reject")
 
     def test_unknown_location_routes_to_confirmation(self) -> None:
         update = triage(
@@ -204,6 +359,23 @@ class TriageTests(unittest.TestCase):
 
         self.assertEqual(update["outcome"], "needs_confirmation")
         self.assertIn("Location", update["review_reason"])
+
+    def test_unknown_residence_or_english_gate_requires_confirmation(self) -> None:
+        update = triage(
+            JobState(
+                title="Frontend Developer",
+                location="Remote",
+                raw_description=(
+                    "Requires local residence and a documented numeric English score."
+                ),
+            ),
+            jev=StubJev(outcome="needs_confirmation"),
+            locations=["Norway", "Remote"],
+            profile_config=PROFILE_CONFIG,
+        )
+
+        self.assertEqual(update["outcome"], "needs_confirmation")
+        self.assertIsNotNone(update["review_reason"])
 
 
 class AgentRoutingTests(unittest.TestCase):

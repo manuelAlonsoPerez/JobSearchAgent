@@ -139,9 +139,8 @@ then return to the terminal and press Enter. The test searches for remote Easy A
 past week, ordered by relevance. It prints the extracted offer and JEV's typed profile, location,
 outcome, and fit result for each job, then asks whether to analyze the next result.
 
-On CPU-only hardware, `nimble` can take several minutes for each of the two JEV decision stages.
-The terminal prints the stage and elapsed time. `JEV_TIMEOUT_SECONDS=500` in `.env` controls the
-per-stage timeout.
+On CPU-only hardware, the single batched JEV triage call can take several minutes.
+`JEV_TIMEOUT_SECONDS=500` in `.env` controls its timeout.
 
 This smoke test does **not** submit applications. LinkedIn credentials are entered only in the
 browser and are not stored in `.env` or read by the script.
@@ -171,6 +170,16 @@ PYTHONPATH=src python -m jobsearchagent.linkedin_agent \
   --max-jobs 5
 ```
 
-Accepted Easy Apply jobs are currently stored as `dry_run_ready`. This command deliberately does
-not fill or submit LinkedIn forms yet; document generation, validation, Easy Apply form handling,
-and submission remain Parts A3–A7 of the build guide.
+```bash
+PYTHONPATH=src python -m jobsearchagent.linkedin_agent --query ServiceNow --geo-id 91000007 --posted-within week --work-type remote --easy-apply --sort relevance --max-jobs 15
+```
+
+Accepted Easy Apply jobs are currently stored as `dry_run_ready`. To smoke-test
+filling one Easy Apply modal (stops before Submit; discards the draft):
+
+```bash
+# Uses src/jobsearchagent/apply/decision.json and the profile CV in src/docs
+PYTHONPATH=src python -m jobsearchagent.apply.smoke_apply
+```
+
+Submission remains Part A7. Cover letters and tailored CVs are skipped for now.

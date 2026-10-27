@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import (
+    Error as PlaywrightError,
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 from ..browser import session
 from ..config import get_settings, linkedin_search_url, load_searches
@@ -34,6 +38,38 @@ _APPLY = re.compile(
 )
 _LOGIN_MARKERS = ("/login", "/checkpoint", "/challenge")
 
+# LinkedIn search-filter query-parameter codes.
+POSTED_WITHIN_SECONDS: dict[str, int] = {
+    "24h": 86_400,
+    "week": 604_800,
+    "month": 2_592_000,
+}
+WORK_TYPE_CODES: dict[str, str] = {
+    "onsite": "1",
+    "remote": "2",
+    "hybrid": "3",
+}
+SORT_CODES: dict[str, str] = {
+    "relevance": "R",
+    "recent": "DD",
+}
+
+
+@dataclass(frozen=True)
+class SearchFilters:
+    """LinkedIn search filters applied on top of the configured base URL.
+
+    Defaults reproduce the historical behavior (remote, Easy Apply, last week,
+    by relevance). ``geo_id`` targets a LinkedIn region such as EMEA
+    (``91000007``) and, when set, replaces the free-text ``location``.
+    """
+
+    geo_id: str | None = None
+    posted_within_seconds: int | None = POSTED_WITHIN_SECONDS["week"]
+    work_type: str | None = WORK_TYPE_CODES["remote"]
+    easy_apply: bool = True
+    sort: str | None = SORT_CODES["relevance"]
+
 
 class LinkedInDiscovery:
     """Discover LinkedIn jobs with one persistent authenticated page."""
@@ -56,6 +92,8 @@ class LinkedInDiscovery:
         query: str,
         location: str,
         limit: int = 20,
+        *,
+        filters: SearchFilters | None = None,
     ) -> list[JobState]:
         """Search and normalize unseen jobs using an existing browser page."""
 
@@ -70,6 +108,7 @@ class LinkedInDiscovery:
                 query,
                 location,
                 start=page_index * 25,
+                filters=filters,
             )
             self.output(f"Searching LinkedIn: {search_url}")
             self._navigate(page, search_url)
@@ -88,13 +127,17 @@ class LinkedInDiscovery:
                 continue
             try:
                 state = self._scrape_job(page, url)
-            except (PlaywrightTimeoutError, RuntimeError) as exc:
+            except (PlaywrightError, RuntimeError) as exc:
                 self.output(f"Could not read {url}: {exc}")
                 continue
             if self._title_is_excluded(str(state.get("title", ""))):
                 continue
             upsert_job(state)
             jobs.append(state)
+            self.output(
+                f"  Found [{len(jobs)}/{limit}]: "
+                f"{str(state.get('title', '')).strip()[:70]}"
+            )
             if len(jobs) >= limit:
                 break
         return jobs
@@ -105,17 +148,46 @@ class LinkedInDiscovery:
         location: str,
         *,
         start: int = 0,
+        filters: SearchFilters | None = None,
     ) -> str:
-        """Build a recent, remote, Easy Apply-optimized LinkedIn URL."""
+        """Build a filtered LinkedIn search URL.
 
-        base = linkedin_search_url(query, location, easy_apply=True)
+        With default ``filters`` this yields a recent, remote, Easy Apply URL
+        sorted by relevance. ``filters.geo_id`` targets a region (e.g. EMEA)
+        and replaces the free-text location.
+        """
+
+        filters = filters or SearchFilters()
+        base = linkedin_search_url(query, location, easy_apply=filters.easy_apply)
         parts = urlsplit(base)
         parameters = dict(parse_qsl(parts.query, keep_blank_values=True))
-        parameters["f_WT"] = "2"
+
+        if filters.work_type:
+            parameters["f_WT"] = filters.work_type
+        else:
+            parameters.pop("f_WT", None)
+
+        if filters.posted_within_seconds:
+            parameters["f_TPR"] = f"r{filters.posted_within_seconds}"
+        else:
+            parameters.pop("f_TPR", None)
+
+        if filters.sort:
+            parameters["sortBy"] = filters.sort
+
+        if not filters.easy_apply:
+            parameters.pop("f_AL", None)
+
+        if filters.geo_id:
+            # A region geoId drives the search; drop the free-text location.
+            parameters["geoId"] = filters.geo_id
+            parameters.pop("location", None)
+
         if start:
             parameters["start"] = str(start)
         else:
             parameters.pop("start", None)
+
         return urlunsplit(
             (
                 parts.scheme,
@@ -175,13 +247,33 @@ class LinkedInDiscovery:
 
     @staticmethod
     def _navigate(page: Page, url: str) -> None:
-        try:
-            page.goto(url, wait_until="commit", timeout=60_000)
-            page.locator("body").wait_for(state="attached", timeout=15_000)
-        except PlaywrightTimeoutError as exc:
-            raise RuntimeError(
-                f"LinkedIn did not produce a usable document while loading: {url}"
-            ) from exc
+        last_error: PlaywrightError | None = None
+        attempts = 3
+        for attempt in range(attempts):
+            try:
+                page.goto(url, wait_until="commit", timeout=60_000)
+                page.wait_for_function(
+                    "() => document.body !== null",
+                    timeout=30_000,
+                )
+                return
+            except PlaywrightTimeoutError as exc:
+                # Slow LinkedIn: if the document attached, proceed anyway.
+                last_error = exc
+                if page.locator("body").count():
+                    return
+            except PlaywrightError as exc:
+                # Transient network blips (ERR_NETWORK_CHANGED,
+                # ERR_CONNECTION_RESET, ERR_ABORTED, ...) are retryable; do not
+                # trust a stale body from the previous page here.
+                last_error = exc
+            if attempt < attempts - 1:
+                page.wait_for_timeout(1_500 * (attempt + 1))
+
+        raise RuntimeError(
+            f"LinkedIn did not produce a usable document after {attempts} "
+            f"attempts while loading: {url}"
+        ) from last_error
 
     @staticmethod
     def _collect_job_urls(page: Page, limit: int) -> list[str]:

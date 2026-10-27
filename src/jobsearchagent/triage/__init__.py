@@ -1,5 +1,6 @@
 """Job triage nodes."""
 
-from .triage import triage
+from .requirements import decide_requirements
+from .triage import select_profile, triage
 
-__all__ = ["triage"]
+__all__ = ["decide_requirements", "select_profile", "triage"]

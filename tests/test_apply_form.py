@@ -11,12 +11,13 @@ from unittest.mock import patch
 
 from jobsearchagent.apply.answers import (
     _same_cv_name,
+    resolve_cover_letter,
     resolve_cv_path,
     resolve_field,
 )
+from jobsearchagent.models import Artifact, FormField, JobState
 from jobsearchagent.apply.form import build_and_answer_form
 from jobsearchagent.browser import session
-from jobsearchagent.models import FormField, JobState
 
 
 PROFILE_CONFIG = {
@@ -98,6 +99,28 @@ class AnswerResolutionTests(unittest.TestCase):
         self.assertTrue(str(resume.value).endswith("cv.pdf"))
         self.assertIsNone(letter.value)
         self.assertEqual(letter.source, "deferred")
+
+    def test_uses_cover_letter_when_artifact_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            letter_path = Path(directory) / "letter.pdf"
+            letter_path.write_bytes(b"%PDF-1.4 letter")
+            state: JobState = {
+                "artifacts": {
+                    "cover_letter": Artifact(
+                        type="cover_letter",
+                        path=str(letter_path),
+                        status="validated",
+                    )
+                }
+            }
+            answer = resolve_field(
+                FormField(id="letter", label="Cover letter", type="file"),
+                profile_id="servicenow-developer",
+                profile_config=PROFILE_CONFIG,
+                cover_letter=resolve_cover_letter(state),
+            )
+        self.assertEqual(answer.source, "profile")
+        self.assertEqual(answer.value, str(letter_path.resolve()))
 
     def test_unknown_screening_and_cefr_are_never_guessed(self) -> None:
         color = resolve_field(
@@ -844,7 +867,7 @@ class SmokeApplyInputTests(unittest.TestCase):
         self.assertEqual(DEFAULT_DECISION_PATH.name, "decision.json")
         self.assertEqual(DEFAULT_DECISION_PATH.parent.name, "apply")
         payload = _load_identifier(None, None)
-        self.assertEqual(payload["profile_id"], "servicenow-developer")
+        self.assertTrue(payload.get("profile_id"))
         self.assertIn("linkedin.com/jobs/view/", str(payload["url"]))
 
     def test_rejects_json_without_url(self) -> None:

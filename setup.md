@@ -174,12 +174,13 @@ PYTHONPATH=src python -m jobsearchagent.linkedin_agent \
 PYTHONPATH=src python -m jobsearchagent.linkedin_agent --query ServiceNow --geo-id 91000007 --posted-within week --work-type remote --easy-apply --sort relevance --max-jobs 15
 ```
 
-Accepted Easy Apply jobs are currently stored as `dry_run_ready`. To smoke-test
-filling one Easy Apply modal (stops before Submit; discards the draft):
+Accepted Easy Apply jobs from the discovery agent are stored as `dry_run_ready`.
+To fill one modal and record the result (still no Submit while `DRY_RUN=true`):
 
 ```bash
 # Uses src/jobsearchagent/apply/decision.json and the profile CV in src/docs
-PYTHONPATH=src python -m jobsearchagent.apply.smoke_apply
+PYTHONPATH=src python -m jobsearchagent.apply.agent
 ```
 
-Submission remains Part A7. Cover letters and tailored CVs are skipped for now.
+Pass `--live` only when you want one real submission. `smoke_apply` remains the
+inspect-only runner that waits on Review and does not write the database.

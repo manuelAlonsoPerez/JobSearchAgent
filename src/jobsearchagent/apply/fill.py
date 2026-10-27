@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..models import FieldAnswer, FormField
-from ..triage.easy_apply import field_looks_like_cv
+from ..triage.easy_apply import field_looks_like_cover_letter, field_looks_like_cv
 
 if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
@@ -31,6 +31,18 @@ def apply_answer(
         return False
 
     value = answer.value
+    if field_looks_like_cover_letter(field.label or field.id):
+        path = Path(str(value)).expanduser()
+        if path.is_file():
+            return _set_file_inputs(root, path)
+        control = locate_control(root, field)
+        if control is None:
+            return False
+        try:
+            control.fill(str(value))
+            return True
+        except Exception:
+            return False
     if field.type == "file" or (
         field_looks_like_cv(field.label or field.id)
         and Path(str(value)).expanduser().is_file()

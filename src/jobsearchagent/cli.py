@@ -24,6 +24,7 @@ from .discovery.linkedin import (
     LinkedInDiscovery,
     SearchFilters,
 )
+from .apply.record import record
 from .graph import invoke_job
 from .models import JobState
 
@@ -185,12 +186,23 @@ def run_batch(
     total = len(result.jobs)
     for index, seed in enumerate(result.jobs, start=1):
         output_fn(f"\n[{index}/{total}] {seed.get('title') or seed.get('url')}")
-        finished = invoke(
-            seed,
-            database_path=database_path,
-            output_fn=output_fn,
-            dry_run=dry_run,
-        )
+        try:
+            finished = invoke(
+                seed,
+                database_path=database_path,
+                output_fn=output_fn,
+                dry_run=dry_run,
+            )
+        except Exception as exc:
+            reason = f"Pipeline failed: {exc}"
+            output_fn(reason + " Queued for review; continuing.")
+            finished = dict(seed)
+            finished["apply_status"] = "failed"
+            finished["review_reason"] = reason
+            try:
+                record(finished, path=database_path)
+            except Exception as persist_exc:
+                output_fn(f"Could not persist failed job: {persist_exc}")
         bucket = tally(counts, finished)
         output_fn(
             f"  {finished.get('outcome') or '-'} → "

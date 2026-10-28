@@ -148,6 +148,27 @@ class GraphRoutingTests(unittest.TestCase):
         self.assertEqual(result.get("apply_status"), "dry_run_ready")
         self.assertEqual(result.get("profile_id"), "servicenow-developer")
 
+    def test_triage_error_records_and_skips_form(self) -> None:
+        forms: list[str] = []
+        lines: list[str] = []
+
+        def boom(_state: JobState) -> dict:
+            raise RuntimeError("JEV HTTP 500 from http://localhost:11434/v1/systemone")
+
+        result = build_graph(
+            checkpointer=InMemorySaver(),
+            triage_fn=boom,
+            form_fn=lambda state, config=None: forms.append("form") or {},
+            apply_fn=lambda state, config=None: {},
+            record_fn=lambda state, **kwargs: {},
+            output_fn=lines.append,
+        ).invoke(_seed(), {"configurable": {"thread_id": "linkedin:jev-fail"}})
+
+        self.assertEqual(forms, [])
+        self.assertEqual(result.get("apply_status"), "failed")
+        self.assertIn("JEV HTTP 500", str(result.get("review_reason")))
+        self.assertIn("Queued for review", "\n".join(lines))
+
     def test_triage_prints_jev_feedback(self) -> None:
         lines: list[str] = []
 

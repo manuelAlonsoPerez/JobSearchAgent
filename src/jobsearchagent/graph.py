@@ -90,7 +90,16 @@ def build_graph(
     )
 
     def triage_node(state: JobState) -> dict[str, Any]:
-        result = dict(_call_triage(triage_fn, state, output_fn))
+        try:
+            result = dict(_call_triage(triage_fn, state, output_fn))
+        except Exception as exc:
+            reason = f"Triage failed: {exc}"
+            output_fn(reason + " Queued for review; continuing.")
+            return {
+                "apply_status": "failed",
+                "review_reason": reason,
+                "messages": [{"role": "system", "content": f"triage_error:{exc}"}],
+            }
         details = result.pop("triage_details", None)
         _log_triage_feedback(state, result, details, output_fn)
         result["messages"] = [
@@ -267,6 +276,8 @@ def _route_start(state: JobState) -> Literal["triage", "record"]:
 
 
 def _route_after_triage(state: JobState) -> Literal["requirements", "record"]:
+    if state.get("apply_status") == "failed":
+        return "record"
     if state.get("outcome") == "accept":
         return "requirements"
     return "record"
@@ -313,6 +324,7 @@ def _live_fill_form(
         profiles = load_work_profiles().get("work_profiles", {})
         profile_id = select_profile(state, profiles)
     resume = resolve_cv_path(state, load_profile(profile_id)["profile"])
+    output_fn(f"Easy Apply modal: profile={profile_id!r} cv={resume}")
     discovery = LinkedInDiscovery(output_fn=output_fn)
     context_manager = browser_session(headless=False)
     context = context_manager.__enter__()
@@ -324,6 +336,10 @@ def _live_fill_form(
         discovery._raise_for_security_challenge(page)
         form = build_and_answer_form(page, state, cv_path=resume, output_fn=output_fn)
         _BROWSER_SESSIONS[thread_id] = hold
+        output_fn(
+            f"Easy Apply fill done: status={state.get('apply_status') or '-'} "
+            f"step={form.step_label or '-'}"
+        )
         return {
             "profile_id": profile_id,
             "form": form,
@@ -334,6 +350,7 @@ def _live_fill_form(
     except Exception as exc:
         hold.close()
         status, reason = classify_browser_error(exc)
+        output_fn(f"Easy Apply failed: {reason}")
         return {
             "apply_status": status,
             "review_reason": reason,

@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Mapping
 from typing import Any
 
 import httpx
 
 from .config import get_settings
+
+_RETRYABLE_STATUS = range(500, 600)
+_DEFAULT_RETRIES = 3
+_RETRY_BACKOFF_SECONDS = 2.0
 
 
 class JevResponseError(ValueError):
@@ -53,20 +58,37 @@ class Jev:
         if not questions:
             raise ValueError("At least one JEV question is required")
 
-        response = self._client.post(
-            f"{self.base_url}/v1/systemone",
-            json={
-                "model": self.model,
-                "state": state,
-                "questions": dict(questions),
-            },
-        )
-        response.raise_for_status()
-        payload = response.json()
-        answers = payload.get("answers")
-        if not isinstance(answers, dict):
-            raise JevResponseError("System One response has no 'answers' mapping")
-        return answers
+        payload = {
+            "model": self.model,
+            "state": state,
+            "questions": dict(questions),
+        }
+        url = f"{self.base_url}/v1/systemone"
+        last_error: Exception | None = None
+        for attempt in range(1, _DEFAULT_RETRIES + 1):
+            try:
+                response = self._client.post(url, json=payload)
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                last_error = exc
+                if attempt == _DEFAULT_RETRIES:
+                    raise
+                time.sleep(_RETRY_BACKOFF_SECONDS * attempt)
+                continue
+            if response.status_code in _RETRYABLE_STATUS and attempt < _DEFAULT_RETRIES:
+                time.sleep(_RETRY_BACKOFF_SECONDS * attempt)
+                continue
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise JevResponseError(_http_error(exc)) from exc
+            body = response.json()
+            answers = body.get("answers")
+            if not isinstance(answers, dict):
+                raise JevResponseError("System One response has no 'answers' mapping")
+            return answers
+        if last_error is not None:
+            raise last_error
+        raise JevResponseError("JEV request failed after retries")
 
     def choice(
         self,
@@ -161,3 +183,12 @@ class Jev:
                 f"{answer_type} probability must be between 0 and 1"
             )
         return probability
+
+
+def _http_error(exc: httpx.HTTPStatusError) -> str:
+    response = exc.response
+    body = (response.text or "").strip().replace("\n", " ")
+    if len(body) > 300:
+        body = body[:297] + "..."
+    detail = body or response.reason_phrase or "no response body"
+    return f"JEV HTTP {response.status_code} from {response.request.url}: {detail}"

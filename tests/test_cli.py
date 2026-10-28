@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 
 from jobsearchagent.cli import (
@@ -210,6 +212,40 @@ class RunBatchTests(unittest.TestCase):
             skip_preflight=True,
         )
         self.assertEqual(seen, ["91000007"])
+
+    def test_invoke_error_is_counted_and_run_continues(self) -> None:
+        invoked: list[str] = []
+
+        def discover_fn(*_args: Any, **_kwargs: Any) -> DiscoverResult:
+            return DiscoverResult(
+                jobs=[
+                    _job(source_job_id="1", url="https://www.linkedin.com/jobs/view/1/"),
+                    _job(source_job_id="2", url="https://www.linkedin.com/jobs/view/2/"),
+                ],
+                duplicate=0,
+            )
+
+        def invoke_fn(seed: JobState, **_kwargs: Any) -> JobState:
+            invoked.append(str(seed.get("source_job_id")))
+            if seed.get("source_job_id") == "1":
+                raise RuntimeError("JEV HTTP 500")
+            finished = dict(seed)
+            finished.update(outcome="accept", apply_status="dry_run_ready")
+            return finished  # type: ignore[return-value]
+
+        with tempfile.TemporaryDirectory() as directory:
+            counts = run_batch(
+                "ServiceNow developer",
+                ["Spain"],
+                database_path=Path(directory) / "jobs.db",
+                discover_fn=discover_fn,
+                invoke_fn=invoke_fn,
+                output_fn=lambda _: None,
+                skip_preflight=True,
+            )
+        self.assertEqual(invoked, ["1", "2"])
+        self.assertEqual(counts.review, 1)
+        self.assertEqual(counts.dry_run_ready, 1)
 
     def test_include_external_is_passed_to_discover(self) -> None:
         seen: list[bool] = []

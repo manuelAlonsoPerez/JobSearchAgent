@@ -1,53 +1,53 @@
 {
-  "url": "https://www.linkedin.com/jobs/view/4483208418/",
-  "title": "Frontend Developer | HiredBuddy",
+  "url": "https://www.linkedin.com/jobs/view/4481585371/",
+  "title": "ServiceNow Developer | Empiric",
   "company": "Unknown company",
   "location": "Unknown location",
-  "profile_id": "frontend-developer",
+  "profile_id": "servicenow-developer",
   "outcome": "accept",
-  "fit_score": 1.8508898568926817,
+  "fit_score": 0.9895347264940326,
   "required_artifacts": ["cv", "cover_letter"],
   "apply_status": "dry_run_ready",
   "review_reason": null,
   "details": {
     "profile": {
-      "choice": "frontend-developer",
+      "choice": "servicenow-developer",
       "source": "title_and_skills"
     },
     "location_eligibility": {
       "type": "choice",
       "choice": "eligible",
       "probabilities": {
-        "eligible": 0.9807679964939036,
-        "ineligible": 0.005524432818869392,
-        "unknown": 0.013707570687227163
+        "eligible": 0.9757964104556088,
+        "ineligible": 0.008471359564276354,
+        "unknown": 0.015732229980114722
       },
-      "confidence": 0.9711519947408553
+      "confidence": 0.9636946156834131
     },
     "non_location_outcome": {
       "type": "choice",
       "choice": "accept",
       "probabilities": {
-        "accept": 0.7555474402132063,
-        "reject": 0.015919715518108793,
-        "needs_confirmation": 0.2285328442686851
+        "accept": 0.7761742184939391,
+        "reject": 0.059567752000285724,
+        "needs_confirmation": 0.16425802950577514
       },
-      "confidence": 0.6333211603198095
+      "confidence": 0.6642613277409086
     },
     "fit": {
       "type": "score",
-      "score": 1.8508898568926817,
+      "score": 0.9895347264940326,
       "legend": {
         "0": "Poor: most of the core is uncovered and not adjacent",
         "1": "Partial: a meaningful part of the core is covered or adjacent, with remaining gaps",
         "2": "Strong: the core is well covered or clearly bridgeable from adjacent experience"
       },
       "probabilities": {
-        "0": 0.06971366051243716,
-        "1": 0.009682822082443976,
-        "2": 0.9206035174051188
+        "0": 0.4364378754189988,
+        "1": 0.13758952266796978,
+        "2": 0.42597260191303143
       },
-      "confidence": 0.7763347853390226
+      "confidence": 0.0
     }
   }
 }

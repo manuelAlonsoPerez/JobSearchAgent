@@ -3,8 +3,9 @@
 Accepts a LinkedIn job URL, a persisted job id, or the JSON object printed by
 the JEV LinkedIn agent (must include ``url``). Opens the live Easy Apply
 modal, fills profile-backed fields, uploads the existing source CV when a
-resume field is present, and stops on the Review screen. It never clicks
-Submit.
+resume field is present, and **never clicks Submit**. At the last step it
+closes the modal (discarding the draft), clicks LinkedIn **Save**, and writes
+the job to ``review_queue`` for later manual apply from a frontend.
 
 Cover letters and tailored CVs are skipped in this pass.
 """
@@ -21,12 +22,16 @@ from typing import Any
 from ..browser import session
 from ..database import get_job
 from ..models import JobState
-from ..triage.easy_apply import dismiss_modal, reached_submit_step
+from ..triage.easy_apply import reached_submit_step
 from ..triage.triage import select_profile
 from ..utils.profile import load_profile
 from ..utils.text import canonicalize_url, extract_linkedin_job_id
 from .answers import resolve_cv_path
 from .form import build_and_answer_form
+from .park import park_for_manual_apply
+from .record import record
+
+__all__ = ["fill_live_application", "park_for_manual_apply", "resolve_job"]
 
 DEFAULT_DECISION_PATH = Path(__file__).resolve().with_name("decision.json")
 
@@ -59,7 +64,7 @@ def fill_live_application(
     output_fn: Any = print,
     input_fn: Any = input,
 ) -> dict[str, Any]:
-    """Open one job, fill Easy Apply, and stop before Submit."""
+    """Open one job, fill Easy Apply, close without Submit, save, and queue."""
 
     from ..config import load_work_profiles
     from ..discovery.linkedin import LinkedInDiscovery
@@ -98,13 +103,23 @@ def fill_live_application(
             output_fn=output_fn,
         )
         at_review = reached_submit_step(page)
+        output_fn(
+            "Last Easy Apply step reached; not clicking Submit application."
+        )
+        parked = park_for_manual_apply(
+            page,
+            state,
+            reached_review=at_review,
+            output_fn=output_fn,
+        )
+        persisted = record(state, path=database_path)
+        persisted = {"saved": parked.get("saved"), **persisted}
         if keep_open:
             output_fn(
-                "Stopped before Submit. Inspect the Review screen, then press "
-                "Enter to discard the draft and close the browser."
+                "Job saved and queued for manual apply. Inspect the page, "
+                "then press Enter to close the browser."
             )
             input_fn("")
-        dismiss_modal(page)
 
     return {
         "mode": "browser",
@@ -117,8 +132,10 @@ def fill_live_application(
             "outcome": state.get("outcome"),
         },
         "reached_review": at_review,
+        "saved": persisted.get("saved"),
         "apply_status": state.get("apply_status"),
         "review_reason": state.get("review_reason"),
+        "review": persisted.get("review"),
         "step_label": form.step_label,
         "answers": [
             {
@@ -231,9 +248,9 @@ def _display_value(value: object) -> object:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Fill a LinkedIn Easy Apply modal for one job and stop before "
-            "Submit. Defaults to apply/decision.json in this folder. "
-            "Does not send the application."
+            "Fill a LinkedIn Easy Apply modal, close it without Submit, "
+            "click Save, and queue the job for manual apply. Defaults to "
+            "apply/decision.json in this folder."
         )
     )
     parser.add_argument(
@@ -273,7 +290,7 @@ def main() -> None:
     parser.add_argument(
         "--no-keep-open",
         action="store_true",
-        help="Close the browser immediately after stopping at Review.",
+        help="Close the browser immediately after Save and queue.",
     )
     arguments = parser.parse_args()
 

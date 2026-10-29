@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,9 +16,10 @@ from jobsearchagent.apply.answers import (
     resolve_cv_path,
     resolve_field,
 )
-from jobsearchagent.models import Artifact, FormField, JobState
-from jobsearchagent.apply.form import build_and_answer_form
+from jobsearchagent.models import Artifact, FieldAnswer, Form, FormField, JobState
+from jobsearchagent.apply.form import build_and_answer_form, log_form_answers
 from jobsearchagent.browser import session
+from jobsearchagent.triage.easy_apply import easy_apply_modal_open, open_easy_apply
 
 
 PROFILE_CONFIG = {
@@ -77,6 +79,28 @@ class AnswerResolutionTests(unittest.TestCase):
         self.assertEqual(email.source, "profile")
         self.assertEqual(phone.value, "451 00 934")
         self.assertEqual(country.value, "Norway (+47)")
+
+    def test_log_form_answers_prints_label_value_and_source(self) -> None:
+        lines: list[str] = []
+        log_form_answers(
+            Form(
+                url="https://www.linkedin.com/jobs/view/1/",
+                fields=[
+                    FormField(id="email", label="Email address", type="email"),
+                ],
+                answers=[
+                    FieldAnswer(
+                        field_id="email",
+                        value="nexdevconsulting@outlook.com",
+                        source="profile",
+                    )
+                ],
+            ),
+            output_fn=lines.append,
+        )
+        text = "\n".join(lines)
+        self.assertIn("Easy Apply answers (1):", text)
+        self.assertIn("Email address = nexdevconsulting@outlook.com [profile]", text)
 
     def test_uploads_existing_cv_and_skips_cover_letter(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -342,6 +366,50 @@ class AnswerResolutionTests(unittest.TestCase):
 
 
 class ApplyModalTests(unittest.TestCase):
+    def test_dismisses_job_search_safety_reminder(self) -> None:
+        html = """
+        <main>
+          <button class="jobs-apply-button" id="easy">Easy Apply</button>
+          <div id="safety" hidden>
+            <h2>Job search safety reminder</h2>
+            <p>Research the company before you apply.</p>
+            <button type="button" id="review-post">Review job post</button>
+            <button type="button" id="continue">Continue applying</button>
+          </div>
+          <div id="modal" hidden class="jobs-easy-apply-modal">
+            <h2>Apply to Petposh vets Ltd</h2>
+            <button type="button">Next</button>
+          </div>
+        </main>
+        <script>
+          const safety = document.getElementById("safety");
+          const modal = document.getElementById("modal");
+          document.getElementById("easy").onclick = () => {
+            safety.hidden = false;
+          };
+          document.getElementById("continue").onclick = () => {
+            safety.hidden = true;
+            modal.hidden = false;
+          };
+        </script>
+        """
+        logs: list[str] = []
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.dict(os.environ, {"LINKEDIN_ACTION_DELAY_MS": "0"}),
+            session(
+                profile_dir=Path(temporary) / "profile",
+                headless=True,
+            ) as context,
+        ):
+            page = context.pages[0] if context.pages else context.new_page()
+            page.set_content(html)
+            open_easy_apply(page, output_fn=logs.append)
+            self.assertTrue(easy_apply_modal_open(page))
+            self.assertTrue(
+                any("safety reminder" in line.casefold() for line in logs)
+            )
+
     def test_fills_contact_and_cv_and_never_clicks_submit(self) -> None:
         html = """
         <main>
@@ -875,6 +943,109 @@ class SmokeApplyInputTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             parse_decision(json.dumps({"outcome": "accept"}))
+
+    def test_parks_filled_job_for_manual_apply(self) -> None:
+        from jobsearchagent.apply.smoke_apply import park_for_manual_apply
+        from jobsearchagent.triage.easy_apply import reached_submit_step
+
+        html = """
+        <main>
+          <button class="jobs-apply-button" id="easy">Easy Apply</button>
+          <button class="jobs-save-button" id="save" type="button">Save</button>
+          <div id="modal" class="jobs-easy-apply-modal" hidden>
+            <h2>Apply to Example</h2>
+            <button type="button" aria-label="Dismiss" id="dismiss">X</button>
+            <div id="step"></div>
+          </div>
+          <div id="confirm" hidden>
+            <button type="button" id="discard">Discard</button>
+          </div>
+        </main>
+        <script>
+          window.submitClicks = 0;
+          window.saveClicks = 0;
+          const modal = document.getElementById("modal");
+          const step = document.getElementById("step");
+          const confirm = document.getElementById("confirm");
+          document.getElementById("easy").onclick = () => {
+            modal.hidden = false;
+            step.innerHTML = `
+              <label for="email">Email address</label>
+              <input id="email" name="email" type="email" required>
+              <button type="button" id="review">Review your application</button>
+            `;
+            document.getElementById("review").onclick = () => {
+              step.innerHTML = `
+                <h3>Review your application</h3>
+                <button type="button" id="submit">Submit application</button>
+              `;
+              document.getElementById("submit").onclick = () => {
+                window.submitClicks += 1;
+              };
+            };
+          };
+          document.getElementById("dismiss").onclick = () => {
+            confirm.hidden = false;
+          };
+          document.getElementById("discard").onclick = () => {
+            modal.hidden = true;
+            confirm.hidden = true;
+          };
+          document.getElementById("save").onclick = () => {
+            window.saveClicks += 1;
+            document.getElementById("save").textContent = "Saved";
+          };
+        </script>
+        """
+        logs: list[str] = []
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.dict(os.environ, {"LINKEDIN_ACTION_DELAY_MS": "0"}),
+            session(
+                profile_dir=Path(temporary) / "profile",
+                headless=True,
+            ) as context,
+        ):
+            page = context.pages[0] if context.pages else context.new_page()
+            page.set_content(html)
+            db = Path(temporary) / "jobs.db"
+            state: JobState = {
+                "url": "https://www.linkedin.com/jobs/view/4484067648/",
+                "source_job_id": "4484067648",
+                "title": "Remote Software Developer",
+                "site": "LinkedIn Jobs",
+                "easy_apply": True,
+                "profile_id": "servicenow-developer",
+            }
+            build_and_answer_form(
+                page,
+                state,
+                profile_config=PROFILE_CONFIG,
+                output_fn=logs.append,
+            )
+            self.assertTrue(reached_submit_step(page))
+            parked = park_for_manual_apply(
+                page,
+                state,
+                reached_review=True,
+                output_fn=logs.append,
+            )
+            from jobsearchagent.apply.record import record as persist_job
+
+            result = {"saved": parked.get("saved"), **persist_job(state, path=db)}
+            self.assertEqual(page.evaluate("window.submitClicks"), 0)
+            self.assertEqual(page.evaluate("window.saveClicks"), 1)
+            self.assertTrue(result["saved"])
+            self.assertEqual(state.get("apply_status"), "manual")
+            self.assertIn("without Submit", str(state.get("review_reason")))
+            with sqlite3.connect(db) as connection:
+                row = connection.execute(
+                    "SELECT url, reason FROM review_queue"
+                ).fetchone()
+            self.assertEqual(row[0], "https://www.linkedin.com/jobs/view/4484067648/")
+            self.assertIn("manual apply", row[1])
+        self.assertTrue(any("Clicked Save" in line for line in logs))
+        self.assertTrue(any("review_queue" in line for line in logs))
 
 
 class _FailIfCalled:

@@ -44,7 +44,29 @@ _SUBMIT = re.compile(
     re.IGNORECASE,
 )
 _DISCARD = re.compile(r"discard|descartar|forkast", re.IGNORECASE)
+_SAVE_JOB = re.compile(
+    r"save( this)?( job)?$|saved$|unsave|"
+    r"lagre|lagret|"
+    r"guardar( oferta)?$|guardado",
+    re.IGNORECASE,
+)
+_ALREADY_SAVED = re.compile(r"saved|lagret|guardado|unsave", re.IGNORECASE)
 _APPLY_HEADING = re.compile(r"^apply to\b", re.IGNORECASE)
+_SAFETY_REMINDER = re.compile(
+    r"job search safety reminder|"
+    r"safety reminder|"
+    r"sikkerhetspåminnelse|"
+    r"jobbsøkersikkerhet",
+    re.IGNORECASE,
+)
+_CONTINUE_APPLYING = re.compile(
+    r"continue applying|"
+    r"fortsett å søke|"
+    r"fortsett med å søke|"
+    r"fortsett med søknaden|"
+    r"continuar con la solicitud",
+    re.IGNORECASE,
+)
 
 # Footer labels used *inside* the Easy Apply modal. Matching these on the
 # whole LinkedIn page is not a signal the modal is open: the header, feed,
@@ -177,6 +199,7 @@ def open_easy_apply(page: Page, output_fn: Callable[[str], None] = print) -> Non
     output_fn("Opening the Easy Apply modal...")
     button.scroll_into_view_if_needed()
     button.click()
+    _dismiss_job_safety_reminder(page, output_fn)
 
     try:
         _apply_heading(page).or_(page.locator(_APPLY_SHELL)).first.wait_for(
@@ -308,10 +331,50 @@ def dismiss_modal(page: Page) -> None:
         discard = page.get_by_role("button", name=_DISCARD)
         if discard.count() and discard.first.is_visible():
             discard.first.click()
+            page.wait_for_timeout(400)
     except Exception:
         # The browser context often closes right after this; a stuck modal is
         # harmless.
         pass
+
+
+def save_job(page: Page, output_fn: Callable[[str], None] = print) -> bool:
+    """Click LinkedIn's job-page Save control. Never touches Submit."""
+
+    if easy_apply_modal_open(page):
+        output_fn("Easy Apply modal is still open; not clicking Save yet.")
+        return False
+
+    candidates = [
+        page.locator("button.jobs-save-button"),
+        page.get_by_role("button", name=_SAVE_JOB),
+        page.locator('[aria-label*="Save" i]').filter(has_not_text=_EASY_APPLY),
+    ]
+    for locator in candidates:
+        try:
+            count = locator.count()
+        except Exception:
+            continue
+        for index in range(count):
+            control = locator.nth(index)
+            try:
+                if not control.is_visible() or not control.is_enabled():
+                    continue
+                label = (
+                    control.get_attribute("aria-label")
+                    or control.inner_text(timeout=1_000)
+                    or ""
+                ).strip()
+            except Exception:
+                continue
+            if _ALREADY_SAVED.search(label) and "unsave" not in label.casefold():
+                output_fn(f"Job already saved ({label}).")
+                return True
+            control.click()
+            output_fn("Clicked Save on the job posting.")
+            return True
+    output_fn("No Save button found on the job page.")
+    return False
 
 
 def modal_text(page: Page) -> str:
@@ -362,6 +425,35 @@ def _apply_heading(page: Page) -> Locator:
     """Visible 'Apply to …' title of the Easy Apply dialog."""
 
     return page.get_by_role("heading", name=_APPLY_HEADING).filter(visible=True)
+
+
+def _dismiss_job_safety_reminder(
+    page: Page,
+    output_fn: Callable[[str], None],
+) -> bool:
+    """Click through LinkedIn's job-search safety interstitial if it appears.
+
+    Some Easy Apply jobs show this reminder instead of the Apply-to modal.
+    The apply form only opens after ``Continue applying``.
+    """
+
+    try:
+        page.wait_for_timeout(400)
+    except Exception:
+        pass
+
+    heading = page.get_by_role("heading", name=_SAFETY_REMINDER).filter(visible=True)
+    continue_button = page.get_by_role("button", name=_CONTINUE_APPLYING).filter(
+        visible=True
+    )
+    if not heading.count() and not continue_button.count():
+        return False
+
+    output_fn("LinkedIn job-search safety reminder; clicking Continue applying.")
+    if continue_button.count():
+        continue_button.first.click()
+        return True
+    return False
 
 
 def _easy_apply_button(page: Page) -> Locator | None:

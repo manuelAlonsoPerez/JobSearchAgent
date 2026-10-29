@@ -25,28 +25,38 @@ def _review_html(submit: bool = True) -> str:
     )
     return f"""
         <main>
-          <div id="modal">
+          <button class="jobs-save-button" type="button" id="save">Save</button>
+          <div id="modal" class="jobs-easy-apply-modal">
             <h2>Apply to Empiric</h2>
             <h3>Review your application</h3>
+            <button type="button" aria-label="Dismiss" id="dismiss">X</button>
             {submit_block}
           </div>
         </main>
         <script>
           window.submitClicks = 0;
+          window.saveClicks = 0;
+          const modal = document.getElementById("modal");
           const submit = document.getElementById("submit");
           if (submit) {{
             submit.onclick = () => {{
               window.submitClicks += 1;
-              document.getElementById("modal").innerHTML =
+              modal.innerHTML =
                 "<h2>Apply to Empiric</h2><p>Your application was sent</p>";
             }};
           }}
+          document.getElementById("dismiss").onclick = () => {{
+            modal.hidden = true;
+          }};
+          document.getElementById("save").onclick = () => {{
+            window.saveClicks += 1;
+          }};
         </script>
         """
 
 
 class SubmitTests(unittest.TestCase):
-    def test_dry_run_reaches_review_without_submit(self) -> None:
+    def test_dry_run_closes_without_submit_and_saves(self) -> None:
         state: JobState = {
             "url": "https://www.linkedin.com/jobs/view/123/",
             "easy_apply": True,
@@ -65,7 +75,9 @@ class SubmitTests(unittest.TestCase):
             submit_application(page, state, dry_run=True, output_fn=lambda _: None)
 
             self.assertEqual(page.evaluate("window.submitClicks"), 0)
-            self.assertEqual(state.get("apply_status"), "dry_run_ready")
+            self.assertEqual(page.evaluate("window.saveClicks"), 1)
+            self.assertEqual(state.get("apply_status"), "manual")
+            self.assertIn("manual apply", str(state.get("review_reason")).casefold())
             self.assertTrue(state.get("messages"))
 
     def test_live_clicks_submit_once(self) -> None:

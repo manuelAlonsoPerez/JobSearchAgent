@@ -52,12 +52,11 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 # Confirm Ollama is reachable
 curl http://localhost:11434/api/tags
 
-# Run the discovery-and-triage agent (does NOT submit applications)
-PYTHONPATH=src python -m jobsearchagent.linkedin_agent \
-  --query developer \
-  --max-jobs 10 \
-  --location Norway \
-  --location Remote
+# Discover and walk Easy Apply jobs (fill, Save, queue for manual apply)
+PYTHONPATH=src python -m jobsearchagent run \
+  --query "ServiceNow developer" \
+  --location Spain \
+  --dry-run
 ```
 
 On the first run, complete LinkedIn login in the Chromium window when prompted, then return to the
@@ -219,7 +218,8 @@ the location check.
 - SQLite stores normalized jobs, JEV outcomes, fit scores, routing status, and application links.
 - Stable LinkedIn IDs deduplicate URL variants and repeated searches.
 - `review_queue` records uncertain, external, and failed jobs without blocking later jobs.
-- A SQLite LangGraph checkpointer is available for the future thread-per-job graph.
+- A SQLite LangGraph checkpointer backs the thread-per-job apply graph
+  (`thread_id = linkedin:{source_job_id}`).
 
 ### Supporting services
 
@@ -233,31 +233,78 @@ the location check.
 ### Easy Apply agent
 
 `jobsearchagent.apply.agent` fills one Easy Apply modal from
-`apply/decision.json` (or a URL / job id), then either stops at Review
-(`DRY_RUN=true`, default) or clicks **Submit application** once (`--live`).
-The result is written to `jobs`; failed, manual, external, and
-`needs_confirmation` jobs also go to `review_queue` with a retry link.
-The daily cap (`LINKEDIN_DAILY_APPLY_LIMIT`) is enforced before a live
-submit. Cover letters are used only when `state.artifacts["cover_letter"]`
-exists and the modal has a matching field.
+`apply/decision.json` (or a URL / job id), closes it **without Submit**,
+clicks LinkedIn **Save**, and writes the job to `review_queue` for later
+manual apply. Pass `--live` to click **Submit application** once. Failed,
+manual, external, and `needs_confirmation` jobs go to `review_queue` with
+a retry link. The daily cap (`LINKEDIN_DAILY_APPLY_LIMIT`) is enforced
+before a live submit. Cover letters are used only when
+`state.artifacts["cover_letter"]` exists and the modal has a matching field.
 
 ```bash
-# Dry run: fill, stop at Review, discard the draft, record dry_run_ready
+# Fill, close, Save, queue for manual apply
 PYTHONPATH=src python -m jobsearchagent.apply.agent
 
 # Live submit (overrides DRY_RUN for this one job)
 PYTHONPATH=src python -m jobsearchagent.apply.agent --live
 ```
 
-`jobsearchagent.apply.smoke_apply` is the inspect-only runner: same fill,
-never records, and waits on Review until you press Enter.
+`jobsearchagent.apply.smoke_apply` is the same fill → close → Save → queue
+flow for a single job, with an optional inspect pause.
+
+### Apply graph (G1)
+
+`jobsearchagent.graph` wires one job through triage → requirements → Easy Apply
+fill → submit → record. External, reject, and `needs_confirmation` jobs skip
+the form and go to record. `invoke_job(seed)` uses `SqliteSaver` so a stopped
+thread can resume.
+
+```python
+from jobsearchagent.graph import invoke_job, thread_id_for
+
+result = invoke_job(seed)  # thread_id = linkedin:{source_job_id}
+```
+
+CV and cover-letter writers (A4) and the validator (A5) are omitted for now.
+The form uploads the existing profile PDF from `src/docs`. A cover letter is
+used only if one is already on `state.artifacts`.
+
+### Batch runner (G2)
+
+`python -m jobsearchagent` is the ApplyPilot-style CLI:
+
+```bash
+# Search and persist unseen jobs
+PYTHONPATH=src python -m jobsearchagent discover \
+  --query "ServiceNow developer" \
+  --location Spain \
+  --limit 20
+
+# Full slice: discover → triage → Easy Apply fill → record
+PYTHONPATH=src python -m jobsearchagent run \
+  --query "ServiceNow developer" \
+  --geo-id 91000007 \
+  --work-type remote \
+  --dry-run
+```
+
+`--easy-apply-only` is the default. `--include-external` also collects jobs that
+open an employer/ATS URL (those are recorded, never filled). `--dry-run` fills
+Easy Apply, closes without Submit, saves the posting, and queues it for
+manual apply. `--geo-id` (e.g. EMEA `91000007`) replaces `--location` for the
+search. `--work-type`, `--posted-within`, and `--sort` match the
+LinkedIn-agent filters. Repeat `--location` to search several markets when no
+geo id is set. `--limit` caps new jobs. Each run prints counts for discovered,
+duplicate, rejected, review, external, dry-run-ready, and applied.
+
+`jobsearchagent.linkedin_agent` is still the triage-only runner if you do not
+want to open Easy Apply.
 
 ## Not implemented yet
 
 These build-guide stages remain:
 
-- Generate a tailored CV and cover letter (A4) and validate them (A5).
-- Wire the complete thread-per-job workflow through LangGraph (G1–G2).
+- Generate a tailored CV and cover letter (A4 GEN) and JEV-score them (A5).
 
 See `setup.md` for installation and browser-login instructions, and
 `src/docs/v1_build_guide.md` for the remaining implementation phases.
@@ -333,10 +380,7 @@ sqlite3 ~/.jobsearchagent/jobsearch.db "PRAGMA table_info(jobs);"
 List the latest discovered jobs:
 
 ```sql
-SELECT discovered_at, title, company, location, outcome, fit_score, apply_status
-FROM jobs
-ORDER BY discovered_at DESC
-LIMIT 20;
+SELECT discovered_at, title, company, location, outcome, fit_score, apply_status FROM jobs ORDER BY discovered_at DESC LIMIT 20;
 ```
 
 List jobs JEV accepted:

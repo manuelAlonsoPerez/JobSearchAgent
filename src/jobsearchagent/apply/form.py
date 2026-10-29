@@ -18,12 +18,14 @@ from ..llm import chat
 from ..models import FieldAnswer, Form, FormField, JobState
 from ..triage.easy_apply import (
     _MAX_MODAL_STEPS,
+    _log_footer_buttons,
     advance_modal,
     easy_apply_modal_open,
     field_looks_like_cover_letter,
     field_looks_like_cv,
     field_looks_like_saved_resume,
     modal_root,
+    modal_text,
     open_easy_apply,
     reached_submit_step,
 )
@@ -43,6 +45,38 @@ if TYPE_CHECKING:
 
 
 ChatFn = Callable[[Sequence[Mapping[str, Any]]], str]
+
+
+def log_form_answers(
+    form: Form,
+    output_fn: Callable[[str], None] = print,
+) -> None:
+    """Print every modal answer so a dry-run can be debugged in the terminal."""
+
+    output_fn(f"Easy Apply answers ({len(form.answers)}):")
+    if not form.answers:
+        output_fn("  (none)")
+        return
+    labels = {field.id: field.label or field.id for field in form.fields}
+    for answer in form.answers:
+        label = labels.get(answer.field_id, answer.field_id)
+        value = answer.value
+        shown = (
+            str(value)[:77] + "..."
+            if isinstance(value, str) and len(value) > 80
+            else value
+        )
+        output_fn(f"  {label} = {shown} [{answer.source}]")
+
+
+def _modal_snippet(page: Page, limit: int = 220) -> str:
+    try:
+        text = re.sub(r"\s+", " ", modal_text(page) or "").strip()
+    except Exception:
+        return ""
+    if len(text) > limit:
+        return text[: limit - 3] + "..."
+    return text
 
 
 def _usable_existing(field: FormField, existing: str | None) -> bool:
@@ -116,6 +150,10 @@ def build_and_answer_form(
             f"Step {step_index + 1}: {step.step_label or 'unnamed'} "
             f"({len(step.fields)} fields)"
         )
+        snippet = _modal_snippet(page)
+        if snippet:
+            output_fn(f"  modal: {snippet}")
+        _log_footer_buttons(page, output_fn)
         for field in step.fields:
             output_fn(
                 f"  saw {field.type} {field.label!r} "
@@ -185,6 +223,7 @@ def build_and_answer_form(
         state["apply_status"] = "manual"
     elif reached_submit_step(page):
         state["apply_status"] = "dry_run_ready"
+    log_form_answers(form, output_fn)
     return form
 
 

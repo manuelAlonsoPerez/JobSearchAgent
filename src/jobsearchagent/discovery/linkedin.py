@@ -94,6 +94,7 @@ class LinkedInDiscovery:
         limit: int = 20,
         *,
         filters: SearchFilters | None = None,
+        stats: dict[str, int] | None = None,
     ) -> list[JobState]:
         """Search and normalize unseen jobs using an existing browser page."""
 
@@ -124,6 +125,8 @@ class LinkedInDiscovery:
         for url in candidates:
             source_job_id = extract_linkedin_job_id(url) or ""
             if seen(SITE, source_job_id, url):
+                if stats is not None:
+                    stats["duplicate"] = int(stats.get("duplicate") or 0) + 1
                 continue
             try:
                 state = self._scrape_job(page, url)

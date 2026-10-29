@@ -68,6 +68,43 @@ class JevTests(unittest.TestCase):
         )
         client.close()
 
+    def test_ask_retries_server_error_then_succeeds(self) -> None:
+        attempts = {"count": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempts["count"] += 1
+            if attempts["count"] < 3:
+                return httpx.Response(500, text="model runner crashed")
+            return httpx.Response(
+                200,
+                json={"answers": {"q": {"choice": "accept", "confidence": 0.8}}},
+            )
+
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        jev = Jev(base_url="http://ollama.test", model="nimble-test", client=client)
+        with patch("jobsearchagent.jev.time.sleep"):
+            choice, _confidence = jev.choice(
+                "job",
+                "Choose",
+                {"accept": "Apply", "reject": "Skip"},
+            )
+        self.assertEqual(choice, "accept")
+        self.assertEqual(attempts["count"], 3)
+        client.close()
+
+    def test_ask_includes_status_body_after_retries(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(500, text="out of memory")
+
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        jev = Jev(base_url="http://ollama.test", model="nimble-test", client=client)
+        with patch("jobsearchagent.jev.time.sleep"):
+            with self.assertRaises(Exception) as raised:
+                jev.ask("job", {"q": {"type": "choice", "instructions": "x", "criteria": {"a": "b", "c": "d"}}})
+        self.assertIn("500", str(raised.exception))
+        self.assertIn("out of memory", str(raised.exception))
+        client.close()
+
 
 class LlmTests(unittest.TestCase):
     def test_chat_supports_json_format_and_apply_model(self) -> None:

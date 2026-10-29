@@ -261,6 +261,228 @@ def add_to_review(
         )
 
 
+def list_jobs(
+    *,
+    path: str | Path | None = None,
+    query: str = "",
+    outcome: str | None = None,
+    apply_status: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return analyzed jobs for the local UI, newest first."""
+
+    init_db(path)
+    clauses = ["1 = 1"]
+    params: list[Any] = []
+    needle = query.strip().casefold()
+    if needle:
+        like = f"%{needle}%"
+        clauses.append(
+            """
+            (
+                lower(COALESCE(title, '')) LIKE ?
+                OR lower(COALESCE(company, '')) LIKE ?
+                OR lower(COALESCE(location, '')) LIKE ?
+                OR lower(url) LIKE ?
+            )
+            """
+        )
+        params.extend([like, like, like, like])
+    if outcome == "untriaged":
+        clauses.append("outcome IS NULL")
+    elif outcome:
+        clauses.append("outcome = ?")
+        params.append(outcome)
+    if apply_status == "none":
+        clauses.append("apply_status IS NULL")
+    elif apply_status:
+        clauses.append("apply_status = ?")
+        params.append(apply_status)
+
+    sql = f"""
+        SELECT
+            dedup_key, site, source_job_id, url, title, company, location,
+            easy_apply, apply_url, profile_id, outcome, fit_score,
+            review_reason, apply_status, attempts, discovered_at, updated_at,
+            applied_at
+        FROM jobs
+        WHERE {' AND '.join(clauses)}
+        ORDER BY updated_at DESC, discovered_at DESC
+    """
+    with _connection(path) as connection:
+        rows = connection.execute(sql, params).fetchall()
+    return [_job_public_dict(row, include_description=False) for row in rows]
+
+
+def get_job_detail(
+    identifier: str,
+    *,
+    path: str | Path | None = None,
+) -> dict[str, Any] | None:
+    """Load one job for the UI by dedup key, LinkedIn ID, or URL."""
+
+    normalized = identifier.strip()
+    if not normalized:
+        raise ValueError("A job identifier is required")
+
+    init_db(path)
+    canonical_url = (
+        canonicalize_url(normalized) if "://" in normalized else normalized
+    )
+    with _connection(path) as connection:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM jobs
+            WHERE dedup_key = ?
+               OR source_job_id = ?
+               OR url = ?
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (normalized, normalized, canonical_url),
+        ).fetchone()
+    if row is None:
+        return None
+    return _job_public_dict(row, include_description=True)
+
+
+def list_review_queue(
+    *,
+    path: str | Path | None = None,
+    status: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return review items joined with job fields when the URL matches."""
+
+    init_db(path)
+    clauses = ["1 = 1"]
+    params: list[Any] = []
+    if status:
+        clauses.append("rq.status = ?")
+        params.append(status)
+    sql = f"""
+        SELECT
+            rq.id AS id,
+            rq.url AS url,
+            rq.reason AS reason,
+            rq.link AS link,
+            rq.status AS status,
+            rq.created_at AS created_at,
+            j.dedup_key AS dedup_key,
+            j.source_job_id AS source_job_id,
+            j.title AS title,
+            j.company AS company,
+            j.location AS location,
+            j.outcome AS outcome,
+            j.fit_score AS fit_score,
+            j.apply_status AS apply_status,
+            j.easy_apply AS easy_apply,
+            j.profile_id AS profile_id
+        FROM review_queue AS rq
+        LEFT JOIN jobs AS j ON j.url = rq.url
+        WHERE {' AND '.join(clauses)}
+        ORDER BY rq.created_at DESC, rq.id DESC
+    """
+    with _connection(path) as connection:
+        rows = connection.execute(sql, params).fetchall()
+    return [_review_public_dict(row) for row in rows]
+
+
+def set_review_status(
+    item_id: int,
+    status: str,
+    *,
+    path: str | Path | None = None,
+) -> dict[str, Any] | None:
+    """Mark a review-queue row pending or done. Returns the updated item."""
+
+    if status not in {"pending", "done"}:
+        raise ValueError("Review status must be 'pending' or 'done'")
+
+    init_db(path)
+    with _connection(path) as connection:
+        connection.execute(
+            "UPDATE review_queue SET status = ? WHERE id = ?",
+            (status, item_id),
+        )
+        if connection.execute(
+            "SELECT changes() AS changed"
+        ).fetchone()["changed"] == 0:
+            return None
+    items = [
+        item
+        for item in list_review_queue(path=path)
+        if item["id"] == item_id
+    ]
+    return items[0] if items else None
+
+
+def summarize_jobs(*, path: str | Path | None = None) -> dict[str, Any]:
+    """Counts for the local UI header."""
+
+    init_db(path)
+    with _connection(path) as connection:
+        job_total = connection.execute(
+            "SELECT COUNT(*) AS count FROM jobs"
+        ).fetchone()["count"]
+        outcomes = {
+            str(row["key"]): int(row["total"])
+            for row in connection.execute(
+                """
+                SELECT COALESCE(outcome, 'untriaged') AS key, COUNT(*) AS total
+                FROM jobs
+                GROUP BY outcome
+                """
+            )
+        }
+        statuses = {
+            str(row["key"]): int(row["total"])
+            for row in connection.execute(
+                """
+                SELECT COALESCE(apply_status, 'none') AS key, COUNT(*) AS total
+                FROM jobs
+                GROUP BY apply_status
+                """
+            )
+        }
+        review = {
+            str(row["status"]): int(row["total"])
+            for row in connection.execute(
+                """
+                SELECT status, COUNT(*) AS total
+                FROM review_queue
+                GROUP BY status
+                """
+            )
+        }
+    return {
+        "jobs": int(job_total),
+        "outcomes": outcomes,
+        "apply_statuses": statuses,
+        "review_pending": int(review.get("pending", 0)),
+        "review_done": int(review.get("done", 0)),
+        "review_total": sum(review.values()),
+    }
+
+
+def _job_public_dict(
+    row: sqlite3.Row,
+    *,
+    include_description: bool,
+) -> dict[str, Any]:
+    values = dict(row)
+    values["easy_apply"] = bool(values.get("easy_apply"))
+    if not include_description:
+        values.pop("raw_description", None)
+    return values
+
+
+def _review_public_dict(row: sqlite3.Row) -> dict[str, Any]:
+    values = dict(row)
+    if values.get("easy_apply") is not None:
+        values["easy_apply"] = bool(values["easy_apply"])
+    return values
+
+
 def count_applied_today(
     site: str,
     *,

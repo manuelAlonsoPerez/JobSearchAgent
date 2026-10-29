@@ -210,3 +210,21 @@ PYTHONPATH=src python -m jobsearchagent discover \
   --query "ServiceNow developer" \
   --location Spain
 ```
+
+## 10. Local review UI
+
+No account and no public bind — the UI talks to a localhost JSON API that reads
+`DB_PATH`.
+
+```bash
+# Terminal 1
+PYTHONPATH=src python -m jobsearchagent serve
+
+# Terminal 2
+cd frontend
+npm install
+npm run dev
+```
+
+Open http://127.0.0.1:5173. **Analyzed jobs** is the `jobs` table; **Manual apply**
+is `review_queue` (open LinkedIn, then mark done).

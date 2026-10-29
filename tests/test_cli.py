@@ -80,6 +80,12 @@ class ParseArgsTests(unittest.TestCase):
         self.assertEqual(args.limit, 3)
         self.assertEqual(args.query, "React")
 
+    def test_serve_binds_localhost_by_default(self) -> None:
+        args = parse_args(["serve", "--port", "9000"])
+        self.assertEqual(args.command, "serve")
+        self.assertEqual(args.host, "127.0.0.1")
+        self.assertEqual(args.port, 9000)
+
 
 class ClassifyTests(unittest.TestCase):
     def test_buckets(self) -> None:

@@ -8,7 +8,9 @@ session that the apply node consumes. After a process kill the fill must be
 re-run; earlier triage/requirements checkpoints still resume.
 
 CV and cover-letter writers (A4) and the validator (A5) are omitted for now.
-Easy Apply uploads the existing profile PDF from ``src/docs``.
+Easy Apply uploads the existing profile PDF from ``src/docs``. The default
+apply finish closes the modal without Submit, saves the posting, and queues
+the job for manual apply.
 """
 
 from __future__ import annotations

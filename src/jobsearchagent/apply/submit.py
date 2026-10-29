@@ -1,9 +1,9 @@
-"""Submit a prepared Easy Apply modal (A7).
+"""Finish a prepared Easy Apply modal (A7).
 
 This module resumes the browser state left by ``build_and_answer_form``. It
-never restarts the application. Dry run stops on Review and discards the
-draft. Live mode clicks Submit application once and waits for LinkedIn's
-confirmation before marking the job applied.
+never restarts the application. The default path closes the modal without
+Submit, clicks LinkedIn Save, and leaves the job for ``review_queue``.
+``dry_run=False`` (``--live``) still clicks Submit application once.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from ..triage.easy_apply import (
     modal_root,
     reached_submit_step,
 )
+from .park import park_for_manual_apply
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -50,7 +51,7 @@ def submit_application(
     database_path: str | Path | None = None,
     output_fn: Callable[[str], None] = print,
 ) -> JobState:
-    """Finish the prepared modal: dry-run discard, or one live submit."""
+    """Finish the prepared modal: save for manual apply, or one live submit."""
 
     settings = get_settings()
     is_dry_run = settings.dry_run if dry_run is None else dry_run
@@ -68,7 +69,10 @@ def submit_application(
         output_fn("External application; not automating Easy Apply.")
         return state
 
-    if not is_dry_run:
+    live_submit = not is_dry_run
+    deferred = bool(state.get("apply_status") == "manual" and state.get("review_reason"))
+
+    if live_submit:
         applied = count_applied_today(site, path=database_path)
         limit = settings.linkedin_daily_apply_limit
         if applied >= limit:
@@ -87,34 +91,26 @@ def submit_application(
         return state
 
     try:
-        if state.get("apply_status") == "manual" and state.get("review_reason"):
-            output_fn(
-                "Required fields were deferred; not submitting. "
-                + str(state.get("review_reason"))
+        at_review = reached_submit_step(page)
+        if not live_submit or deferred or not at_review:
+            if deferred:
+                output_fn(
+                    "Required fields were deferred; not submitting. "
+                    + str(state.get("review_reason"))
+                )
+            elif not live_submit:
+                output_fn(
+                    "Last Easy Apply step reached; not clicking Submit application."
+                )
+            park_for_manual_apply(
+                page,
+                state,
+                reached_review=at_review,
+                output_fn=output_fn,
             )
-            _capture_diagnostics(page, state, output_fn)
-            dismiss_modal(page)
-            return state
-
-        if not reached_submit_step(page):
-            state["apply_status"] = "manual"
-            state["review_reason"] = (
-                state.get("review_reason")
-                or "Easy Apply did not reach the Review screen."
-            )
-            output_fn(state["review_reason"])
-            _capture_diagnostics(page, state, output_fn)
-            dismiss_modal(page)
             return state
 
         state["apply_url"] = state.get("apply_url") or state.get("url")
-
-        if is_dry_run:
-            state["apply_status"] = "dry_run_ready"
-            output_fn("Dry run: stopping at Review without submitting.")
-            _capture_diagnostics(page, state, output_fn)
-            dismiss_modal(page)
-            return state
 
         if not _click_submit_once(page, output_fn):
             state["apply_status"] = "failed"

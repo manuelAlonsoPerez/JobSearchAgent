@@ -22,13 +22,16 @@ from typing import Any
 from ..browser import session
 from ..database import get_job
 from ..models import JobState
-from ..triage.easy_apply import dismiss_modal, reached_submit_step, save_job
+from ..triage.easy_apply import reached_submit_step
 from ..triage.triage import select_profile
 from ..utils.profile import load_profile
 from ..utils.text import canonicalize_url, extract_linkedin_job_id
 from .answers import resolve_cv_path
 from .form import build_and_answer_form
+from .park import park_for_manual_apply
 from .record import record
+
+__all__ = ["fill_live_application", "park_for_manual_apply", "resolve_job"]
 
 DEFAULT_DECISION_PATH = Path(__file__).resolve().with_name("decision.json")
 
@@ -103,13 +106,14 @@ def fill_live_application(
         output_fn(
             "Last Easy Apply step reached; not clicking Submit application."
         )
-        persisted = park_for_manual_apply(
+        parked = park_for_manual_apply(
             page,
             state,
             reached_review=at_review,
-            database_path=database_path,
             output_fn=output_fn,
         )
+        persisted = record(state, path=database_path)
+        persisted = {"saved": parked.get("saved"), **persisted}
         if keep_open:
             output_fn(
                 "Job saved and queued for manual apply. Inspect the page, "
@@ -145,38 +149,6 @@ def fill_live_application(
             for answer in form.answers
         ],
     }
-
-
-def park_for_manual_apply(
-    page: Any,
-    state: JobState,
-    *,
-    reached_review: bool,
-    database_path: str | Path | None = None,
-    output_fn: Any = print,
-) -> dict[str, Any]:
-    """Close Easy Apply without Submit, click Save, and write ``review_queue``."""
-
-    dismiss_modal(page)
-    output_fn("Closed the Easy Apply modal without submitting.")
-    saved = save_job(page, output_fn)
-    if reached_review:
-        reason = (
-            "Easy Apply filled and closed without Submit; "
-            "saved for manual apply."
-        )
-    else:
-        reason = (
-            "Easy Apply did not reach Review; closed without Submit "
-            "and queued for manual apply."
-        )
-    if not saved:
-        reason += " Save button was not found."
-    state["apply_status"] = "manual"
-    state["review_reason"] = reason
-    persisted = record(state, path=database_path)
-    output_fn("Queued for manual apply in review_queue.")
-    return {"saved": saved, **persisted}
 
 
 def resolve_job(

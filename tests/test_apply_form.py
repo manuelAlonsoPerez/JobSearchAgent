@@ -1024,13 +1024,15 @@ class SmokeApplyInputTests(unittest.TestCase):
                 output_fn=logs.append,
             )
             self.assertTrue(reached_submit_step(page))
-            result = park_for_manual_apply(
+            parked = park_for_manual_apply(
                 page,
                 state,
                 reached_review=True,
-                database_path=db,
                 output_fn=logs.append,
             )
+            from jobsearchagent.apply.record import record as persist_job
+
+            result = {"saved": parked.get("saved"), **persist_job(state, path=db)}
             self.assertEqual(page.evaluate("window.submitClicks"), 0)
             self.assertEqual(page.evaluate("window.saveClicks"), 1)
             self.assertTrue(result["saved"])

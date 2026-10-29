@@ -174,21 +174,21 @@ PYTHONPATH=src python -m jobsearchagent.linkedin_agent \
 PYTHONPATH=src python -m jobsearchagent.linkedin_agent --query ServiceNow --geo-id 91000007 --posted-within week --work-type remote --easy-apply --sort relevance --max-jobs 15
 ```
 
-Accepted Easy Apply jobs from the discovery agent are stored as `dry_run_ready`.
-To fill one modal and record the result (still no Submit while `DRY_RUN=true`):
+Accepted Easy Apply jobs from the apply graph are filled, closed without
+Submit, saved on LinkedIn, and queued in `review_queue` for manual apply.
 
 ```bash
 # Uses src/jobsearchagent/apply/decision.json and the profile CV in src/docs
 PYTHONPATH=src python -m jobsearchagent.apply.agent
 ```
 
-Pass `--live` only when you want one real submission. `smoke_apply` remains the
-inspect-only runner that waits on Review and does not write the database.
+Pass `--live` only when you want one real submission. `smoke_apply` is the
+same fill → close → Save → queue flow for a single job.
 
 ## 9. Run the batch CLI (discover → apply graph)
 
 `python -m jobsearchagent run` discovers LinkedIn jobs and walks each one through
-triage, Easy Apply fill, and record. `--dry-run` never clicks Submit:
+triage, Easy Apply fill, Save, and record. `--dry-run` never clicks Submit:
 
 ```bash
 PYTHONPATH=src python -m jobsearchagent run --query "ServiceNow developer" --geo-id 91000007 --work-type remote --dry-run

@@ -328,7 +328,7 @@ def _add_shared_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Fill Easy Apply and stop at Review (default when DRY_RUN=true).",
+        help="Fill Easy Apply, close without Submit, Save, and queue.",
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument(

@@ -52,7 +52,7 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 # Confirm Ollama is reachable
 curl http://localhost:11434/api/tags
 
-# Discover and walk Easy Apply jobs (dry-run: fill, stop at Review)
+# Discover and walk Easy Apply jobs (fill, Save, queue for manual apply)
 PYTHONPATH=src python -m jobsearchagent run \
   --query "ServiceNow developer" \
   --location Spain \
@@ -233,24 +233,24 @@ the location check.
 ### Easy Apply agent
 
 `jobsearchagent.apply.agent` fills one Easy Apply modal from
-`apply/decision.json` (or a URL / job id), then either stops at Review
-(`DRY_RUN=true`, default) or clicks **Submit application** once (`--live`).
-The result is written to `jobs`; failed, manual, external, and
-`needs_confirmation` jobs also go to `review_queue` with a retry link.
-The daily cap (`LINKEDIN_DAILY_APPLY_LIMIT`) is enforced before a live
-submit. Cover letters are used only when `state.artifacts["cover_letter"]`
-exists and the modal has a matching field.
+`apply/decision.json` (or a URL / job id), closes it **without Submit**,
+clicks LinkedIn **Save**, and writes the job to `review_queue` for later
+manual apply. Pass `--live` to click **Submit application** once. Failed,
+manual, external, and `needs_confirmation` jobs go to `review_queue` with
+a retry link. The daily cap (`LINKEDIN_DAILY_APPLY_LIMIT`) is enforced
+before a live submit. Cover letters are used only when
+`state.artifacts["cover_letter"]` exists and the modal has a matching field.
 
 ```bash
-# Dry run: fill, stop at Review, discard the draft, record dry_run_ready
+# Fill, close, Save, queue for manual apply
 PYTHONPATH=src python -m jobsearchagent.apply.agent
 
 # Live submit (overrides DRY_RUN for this one job)
 PYTHONPATH=src python -m jobsearchagent.apply.agent --live
 ```
 
-`jobsearchagent.apply.smoke_apply` is the inspect-only runner: same fill,
-never records, and waits on Review until you press Enter.
+`jobsearchagent.apply.smoke_apply` is the same fill → close → Save → queue
+flow for a single job, with an optional inspect pause.
 
 ### Apply graph (G1)
 
@@ -290,12 +290,12 @@ PYTHONPATH=src python -m jobsearchagent run \
 
 `--easy-apply-only` is the default. `--include-external` also collects jobs that
 open an employer/ATS URL (those are recorded, never filled). `--dry-run` fills
-the modal and stops at Review. `--geo-id` (e.g. EMEA `91000007`) replaces
-`--location` for the search. `--work-type`, `--posted-within`, and `--sort`
-match the LinkedIn-agent filters. Repeat `--location` to search several
-markets when no geo id is set. `--limit` caps new jobs. Each run prints counts
-for discovered, duplicate, rejected, review, external, dry-run-ready, and
-applied.
+Easy Apply, closes without Submit, saves the posting, and queues it for
+manual apply. `--geo-id` (e.g. EMEA `91000007`) replaces `--location` for the
+search. `--work-type`, `--posted-within`, and `--sort` match the
+LinkedIn-agent filters. Repeat `--location` to search several markets when no
+geo id is set. `--limit` caps new jobs. Each run prints counts for discovered,
+duplicate, rejected, review, external, dry-run-ready, and applied.
 
 `jobsearchagent.linkedin_agent` is still the triage-only runner if you do not
 want to open Easy Apply.

@@ -1,8 +1,9 @@
-"""Phase 3 apply agent: fill (A6), submit (A7), and record (A8).
+"""Phase 3 apply agent: fill (A6), finish (A7), and record (A8).
 
 Uses the same job input as ``smoke_apply`` (decision.json / URL / job id).
-Unlike the smoke runner it persists the result, enforces the daily apply
-limit, and either discards the draft (``DRY_RUN``) or submits once.
+Default path fills Easy Apply, closes without Submit, clicks Save, and
+queues the job in ``review_queue`` for later manual apply. ``--live`` still
+clicks Submit application once and enforces the daily cap.
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ def apply_to_job(
     output_fn: Any = print,
     input_fn: Any = input,
 ) -> dict[str, Any]:
-    """Fill one Easy Apply job, submit or dry-run, and persist the result."""
+    """Fill one Easy Apply job, save for manual apply (or live-submit), persist."""
 
     from ..config import load_work_profiles
 
@@ -92,7 +93,10 @@ def apply_to_job(
         persisted = record(state, path=database_path)
         return _result(state, persisted, form_answers=[])
     output_fn(f"Using profile '{selected_profile}' CV: {resume}")
-    output_fn("Mode: " + ("dry run" if is_dry_run else "live submit"))
+    output_fn(
+        "Mode: "
+        + ("live submit" if not is_dry_run else "save for manual apply")
+    )
 
     discovery = LinkedInDiscovery(input_fn=input_fn, output_fn=output_fn)
     form_answers: list[dict[str, Any]] = []
@@ -170,9 +174,9 @@ def _result(
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Apply to one LinkedIn Easy Apply job: fill the modal, then dry-run "
-            "or submit once, and record the result. Defaults to "
-            "apply/decision.json. DRY_RUN=true (default) never clicks Submit."
+            "Fill one LinkedIn Easy Apply job, close without Submit, save "
+            "the posting, and queue it for manual apply. Defaults to "
+            "apply/decision.json. --live clicks Submit application once."
         )
     )
     parser.add_argument(
@@ -210,7 +214,7 @@ def main() -> None:
         "--dry-run",
         action="store_true",
         default=None,
-        help="Stop at Review and discard the draft (default when DRY_RUN=true).",
+        help="Fill, close, Save, and queue for manual apply (default).",
     )
     parser.add_argument(
         "--live",

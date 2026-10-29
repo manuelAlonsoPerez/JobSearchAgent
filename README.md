@@ -291,7 +291,27 @@ PYTHONPATH=src python -m jobsearchagent run \
 `--easy-apply-only` is the default. `--include-external` also collects jobs that
 open an employer/ATS URL (those are recorded, never filled). `--dry-run` fills
 Easy Apply, closes without Submit, saves the posting, and queues it for
-manual apply. `--geo-id` (e.g. EMEA `91000007`) replaces `--location` for the
+manual apply.
+
+### Local review UI
+
+A Vite React app lists analyzed jobs and the manual-apply queue. There is no
+login; it only reads the local SQLite database through a localhost API.
+
+```bash
+# Terminal 1 — JSON API on http://127.0.0.1:8765
+PYTHONPATH=src python -m jobsearchagent serve
+
+# Terminal 2 — UI on http://127.0.0.1:5173
+cd frontend
+npm install
+npm run dev
+```
+
+- **Analyzed jobs** (`#jobs`) — `jobs` table: title, company, JEV outcome, fit, apply status, description.
+- **Manual apply** (`#review`) — `review_queue`: open the LinkedIn link, then mark the row done.
+
+The API binds to `127.0.0.1` only. After `npm run build`, `serve` can also host `frontend/dist` at `http://127.0.0.1:8765`. `--geo-id` (e.g. EMEA `91000007`) replaces `--location` for the
 search. `--work-type`, `--posted-within`, and `--sort` match the
 LinkedIn-agent filters. Repeat `--location` to search several markets when no
 geo id is set. `--limit` caps new jobs. Each run prints counts for discovered,

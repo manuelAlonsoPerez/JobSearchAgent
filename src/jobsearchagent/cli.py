@@ -226,6 +226,27 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     ):
         sub = subparsers.add_parser(name, help=help_text)
         _add_shared_flags(sub)
+    serve = subparsers.add_parser(
+        "serve",
+        help="Local JSON API for the Vite jobs / review-queue UI.",
+    )
+    serve.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind address. Default: 127.0.0.1 (localhost only).",
+    )
+    serve.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="Port. Default: 8765.",
+    )
+    serve.add_argument(
+        "--db-path",
+        type=Path,
+        default=None,
+        help="Override DB_PATH from .env.",
+    )
     return parser.parse_args(argv)
 
 
@@ -237,6 +258,16 @@ def main(
     invoke_fn: InvokeFn | None = None,
 ) -> int:
     arguments = parse_args(argv)
+    if arguments.command == "serve":
+        from .web import run_server
+
+        run_server(
+            host=arguments.host,
+            port=arguments.port,
+            db_path=arguments.db_path,
+        )
+        return 0
+
     locations = arguments.locations
     dry_run = True if arguments.dry_run else None
     filters = _filters_from_args(arguments)

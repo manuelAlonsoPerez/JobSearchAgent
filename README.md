@@ -66,13 +66,18 @@ PYTHONPATH=src python -m jobsearchagent run --dry-run
 
 # Only exact (tier 1) yaml queries
 PYTHONPATH=src python -m jobsearchagent run --tier 1 --dry-run
+
+# Up to 15 new jobs per search, stop the run after 80 new jobs
+PYTHONPATH=src python -m jobsearchagent run --dry-run --limit 15 --max-jobs 80
 ```
 
 On the first run, complete LinkedIn login in the Chromium window when prompted, then return to
 the terminal and press Enter. Locations default to `JOB_LOCATIONS` in `.env` (Norway and Remote).
-Repeat `--location` to override them for one run. `--limit` caps **new** jobs across all searches
-in that run. To re-analyze jobs already in the database, clear them first (see
-[Delete stored jobs](#delete-stored-jobs)).
+Repeat `--location` to override them for one run. Searches run **one after another**. `--limit`
+is new jobs **per query and location** (default 20). `--max-jobs` optionally caps new jobs for
+the whole run; omit it to walk every search. A full yaml run with two locations is dozens of
+LinkedIn searches and can take many hours of JEV. To re-analyze jobs already in the database,
+clear them first (see [Delete stored jobs](#delete-stored-jobs)).
 
 `--dry-run` fills Easy Apply, closes without Submit, saves the posting, and queues it for
 manual apply. `--easy-apply-only` is the default; `--include-external` also records jobs that
@@ -118,8 +123,9 @@ posted in the last week, sorted by relevance.
 | `--easy-apply` / `--no-easy-apply` | on\* (`linkedin_agent`)               | `f_AL`                           |
 
 `--geo-id` runs one region-scoped search instead of iterating `--location`. Triage eligibility
-still follows `JOB_LOCATIONS` / `--location`. Each `run` prints counts for discovered, duplicate,
-rejected, review, external, dry-run-ready, and applied.
+still follows `JOB_LOCATIONS` / `--location`. `--limit` is per query×location; `--max-jobs` is
+the optional run total. Each `run` prints counts for discovered, duplicate, rejected, review,
+external, dry-run-ready, and applied.
 
 A job is location-eligible when it is based in a configured place (Norway), explicitly permits
 remote work from there, includes that place through a wider scope (EEA / Europe / Nordic), or is

@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 from jobsearchagent.cli import (
     DiscoverResult,
     _search_places,
     classify_result,
+    discover_jobs,
     format_counts,
+    jobs_this_search,
     main,
     normalize_search_queries,
     parse_args,
@@ -80,7 +84,13 @@ class ParseArgsTests(unittest.TestCase):
         self.assertEqual(args.command, "discover")
         self.assertFalse(args.easy_apply_only)
         self.assertEqual(args.limit, 3)
+        self.assertIsNone(args.max_jobs)
         self.assertEqual(args.queries, ["React"])
+
+    def test_max_jobs_flag(self) -> None:
+        args = parse_args(["run", "--query", "React", "--max-jobs", "80", "--dry-run"])
+        self.assertEqual(args.max_jobs, 80)
+        self.assertEqual(args.limit, 20)
 
     def test_omitted_query_uses_searches_yaml(self) -> None:
         args = parse_args(["run", "--dry-run"])
@@ -423,3 +433,69 @@ class ConfiguredSearchTests(unittest.TestCase):
             normalize_search_queries(["ServiceNow", "  AI developer  "]),
             ["ServiceNow", "AI developer"],
         )
+
+
+class SequentialLimitTests(unittest.TestCase):
+    def test_jobs_this_search_uses_per_search_until_max_jobs(self) -> None:
+        self.assertEqual(jobs_this_search(20, 0, None), 20)
+        self.assertEqual(jobs_this_search(20, 0, 50), 20)
+        self.assertEqual(jobs_this_search(20, 45, 50), 5)
+        self.assertEqual(jobs_this_search(20, 50, 50), 0)
+
+    def test_each_search_gets_full_limit_until_max_jobs(self) -> None:
+        calls: list[tuple[str, str, int]] = []
+        job_index = 0
+
+        class FakeDiscovery:
+            def __init__(self, **_kwargs: Any) -> None:
+                return None
+
+            def ensure_login(self, _page: Any) -> None:
+                return None
+
+            def discover_with_page(
+                self,
+                _page: Any,
+                query: str,
+                location: str,
+                limit: int,
+                **_kwargs: Any,
+            ) -> list[JobState]:
+                nonlocal job_index
+                calls.append((query, location, limit))
+                found: list[JobState] = []
+                for _ in range(limit):
+                    job_index += 1
+                    found.append(
+                        _job(
+                            source_job_id=str(job_index),
+                            url=f"https://www.linkedin.com/jobs/view/{job_index}/",
+                        )
+                    )
+                return found
+
+        @contextmanager
+        def fake_browser(**_kwargs: Any) -> Any:
+            context = MagicMock()
+            context.pages = [object()]
+            yield context
+
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch("jobsearchagent.cli.LinkedInDiscovery", FakeDiscovery),
+                patch("jobsearchagent.cli.browser_session", fake_browser),
+            ):
+                result = discover_jobs(
+                    ["A", "B"],
+                    ["Norway", "Remote"],
+                    limit=5,
+                    max_jobs=8,
+                    database_path=Path(directory) / "jobs.db",
+                    output_fn=lambda _: None,
+                )
+
+        self.assertEqual(
+            [(query, place, cap) for query, place, cap in calls],
+            [("A", "Norway", 5), ("A", "Remote", 3)],
+        )
+        self.assertEqual(len(result.jobs), 8)

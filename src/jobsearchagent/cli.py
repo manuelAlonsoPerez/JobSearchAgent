@@ -100,6 +100,21 @@ def tally(counts: RunCounts, state: JobState) -> str:
     return bucket
 
 
+def jobs_this_search(
+    per_search: int,
+    collected: int,
+    max_jobs: int | None,
+) -> int:
+    """How many new jobs the next query×location may collect."""
+
+    if max_jobs is None:
+        return per_search
+    remaining = max_jobs - collected
+    if remaining < 1:
+        return 0
+    return min(per_search, remaining)
+
+
 def discover_jobs(
     query: str | Sequence[str] | None,
     locations: Sequence[str],
@@ -111,36 +126,42 @@ def discover_jobs(
     output_fn: Callable[[str], None] = _emit,
     input_fn: Callable[[str], str] = input,
     max_tier: int | None = None,
+    max_jobs: int | None = None,
 ) -> DiscoverResult:
     """Search LinkedIn and persist unseen jobs. Skips jobs already in SQLite.
 
     ``query`` may be one string, several strings, or omitted. When omitted,
     queries come from ``searches.yaml`` (optionally capped with ``max_tier``).
-    One browser session covers every query × location pair.
+    One browser session covers every query × location pair. ``limit`` is new
+    jobs per pair; ``max_jobs`` optionally caps the whole run.
     """
 
     if limit < 1:
         raise ValueError("limit must be at least 1")
+    if max_jobs is not None and max_jobs < 1:
+        raise ValueError("max_jobs must be at least 1")
     queries = normalize_search_queries(query, max_tier=max_tier)
     search = filters or SearchFilters(easy_apply=easy_apply_only)
     places = _search_places(locations, search)
     pairs = [(item, place) for item in queries for place in places]
+    cap = (
+        f", stop after {max_jobs} new jobs" if max_jobs is not None else ""
+    )
     output_fn(
         f"{len(queries)} search query(ies) × {len(places)} location(s) "
-        f"({len(pairs)} LinkedIn searches, up to {limit} new jobs)"
+        f"({len(pairs)} LinkedIn searches, up to {limit} new jobs each{cap})"
     )
     init_db(database_path)
     stats: dict[str, int] = {"duplicate": 0}
     discovery = LinkedInDiscovery(input_fn=input_fn, output_fn=output_fn)
     jobs: list[JobState] = []
-    remaining = limit
     with browser_session(headless=False) as context:
         page = context.pages[0] if context.pages else context.new_page()
         discovery.ensure_login(page)
         for index, (search_query, location) in enumerate(pairs):
-            left = len(pairs) - index
-            search_limit = (remaining + left - 1) // left
-            if remaining < 1 or search_limit < 1:
+            search_limit = jobs_this_search(limit, len(jobs), max_jobs)
+            if search_limit < 1:
+                output_fn(f"Reached --max-jobs {max_jobs}; stopping discovery.")
                 break
             place_label = location or "geoId"
             output_fn(
@@ -155,7 +176,6 @@ def discover_jobs(
                 stats=stats,
             )
             jobs.extend(found)
-            remaining = max(0, remaining - len(found))
     return DiscoverResult(jobs=jobs, duplicate=int(stats.get("duplicate") or 0))
 
 
@@ -174,6 +194,7 @@ def run_batch(
     invoke_fn: InvokeFn | None = None,
     skip_preflight: bool = False,
     max_tier: int | None = None,
+    max_jobs: int | None = None,
 ) -> RunCounts:
     """Discover jobs, run the G1 graph on each, and return G2 counts."""
 
@@ -191,6 +212,7 @@ def run_batch(
         output_fn=output_fn,
         input_fn=input_fn,
         max_tier=max_tier,
+        max_jobs=max_jobs,
     )
     counts.discovered = len(result.jobs)
     counts.duplicate = result.duplicate
@@ -304,6 +326,7 @@ def main(
             database_path=arguments.db_path,
             output_fn=output_fn,
             max_tier=arguments.tier,
+            max_jobs=arguments.max_jobs,
         )
         for index, job in enumerate(result.jobs, start=1):
             output_fn(
@@ -330,6 +353,7 @@ def main(
         invoke_fn=invoke_fn,
         skip_preflight=discover_fn is not None,
         max_tier=arguments.tier,
+        max_jobs=arguments.max_jobs,
     )
     output_fn("")
     output_fn(format_counts(counts))
@@ -393,7 +417,17 @@ def _add_shared_flags(parser: argparse.ArgumentParser) -> None:
         "--limit",
         type=int,
         default=20,
-        help="Maximum new jobs to collect. Default: 20.",
+        help="Maximum new jobs per query and location. Default: 20.",
+    )
+    parser.add_argument(
+        "--max-jobs",
+        dest="max_jobs",
+        type=int,
+        default=None,
+        help=(
+            "Optional cap on new jobs for the whole run. "
+            "Omit to walk every search."
+        ),
     )
     parser.add_argument(
         "--dry-run",

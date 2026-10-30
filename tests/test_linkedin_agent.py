@@ -269,11 +269,11 @@ class TriageTests(unittest.TestCase):
 
         self.assertEqual(update["profile_id"], "frontend")
         self.assertEqual(update["outcome"], "accept")
-        self.assertEqual(update["fit_score"], 1.5)
+        self.assertNotIn("fit_score", update)
         self.assertEqual(len(jev.requests), 1)
         self.assertEqual(
             set(jev.requests[0]["questions"]),
-            {"location_eligibility", "outcome", "fit"},
+            {"location_eligibility", "outcome"},
         )
         self.assertNotIn("profile", jev.requests[0]["questions"])
         self.assertNotIn("profile_summaries", jev.requests[0]["state"])

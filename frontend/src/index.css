@@ -229,7 +229,67 @@ code,
 }
 
 .workspace.with-detail {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.list-stack {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.15rem 0.2rem 0;
+}
+
+.pager p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.pager-pages {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.pager-arrow {
+  min-width: 2rem;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.pager-gap {
+  color: var(--muted);
+  padding: 0 0.15rem;
+}
+
+.pager-size {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.pager-size select {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.3rem 0.5rem;
+  min-width: 4.5rem;
+}
+
+.pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .table-wrap {
@@ -404,6 +464,10 @@ td strong {
   font-family: Outfit, ui-sans-serif, sans-serif;
   font-size: 0.92rem;
   line-height: 1.45;
+}
+
+.detail section .detail-meta + .reason {
+  margin-top: 0.5rem;
 }
 
 .reason {

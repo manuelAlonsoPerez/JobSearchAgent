@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchJob, fetchJobs } from '../api'
-import { ApplyBadge, OutcomeBadge } from '../components/StatusBadge'
-import { formatFit, formatWhen, label } from '../format'
+import { Pagination } from '../components/Pagination'
+import { ApplyBadge, EmploymentBadge, OutcomeBadge } from '../components/StatusBadge'
+import {
+  formatConfidence,
+  formatWhen,
+  jevChoice,
+  jevReason,
+  label,
+} from '../format'
 import type { Job } from '../types'
+import { PAGE_SIZE, paginate } from '../pagination'
 
 type JobsPageProps = {
   onChanged: () => void
@@ -36,6 +44,8 @@ export function JobsPage({ onChanged }: JobsPageProps) {
   const [detail, setDetail] = useState<Job | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(PAGE_SIZE)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query), 200)
@@ -53,6 +63,7 @@ export function JobsPage({ onChanged }: JobsPageProps) {
       .then((payload) => {
         if (cancelled) return
         setJobs(payload.jobs)
+        setPage(1)
         setError(null)
         onChanged()
       })
@@ -89,6 +100,8 @@ export function JobsPage({ onChanged }: JobsPageProps) {
     () => jobs.find((job) => job.dedup_key === selectedId) ?? detail,
     [jobs, selectedId, detail],
   )
+  const paging = paginate(jobs, page, pageSize)
+  const visible = paging.slice
 
   return (
     <section className="page">
@@ -127,6 +140,7 @@ export function JobsPage({ onChanged }: JobsPageProps) {
       {error ? <p className="banner">{error}</p> : null}
 
       <div className={`workspace ${selected ? 'with-detail' : ''}`}>
+        <div className="list-stack">
         <div className="table-wrap">
           {loading && jobs.length === 0 ? <p className="empty">Loading jobs…</p> : null}
           {!loading && jobs.length === 0 && !error ? (
@@ -142,13 +156,12 @@ export function JobsPage({ onChanged }: JobsPageProps) {
                   <th>Role</th>
                   <th>Location</th>
                   <th>Outcome</th>
-                  <th>Fit</th>
                   <th>Apply</th>
                   <th>Updated</th>
                 </tr>
               </thead>
               <tbody>
-                {jobs.map((job) => (
+                {visible.map((job) => (
                   <tr
                     key={job.dedup_key}
                     className={job.dedup_key === selectedId ? 'is-selected' : ''}
@@ -158,11 +171,17 @@ export function JobsPage({ onChanged }: JobsPageProps) {
                       <strong>{label(job.title, 'Untitled role')}</strong>
                       <span className="sub">{label(job.company, 'Unknown company')}</span>
                     </td>
-                    <td>{label(job.location)}</td>
+                    <td>
+                      {label(job.location)}
+                      {job.employment_type && job.employment_type !== 'unknown' ? (
+                        <span className="sub">
+                          <EmploymentBadge value={job.employment_type} />
+                        </span>
+                      ) : null}
+                    </td>
                     <td>
                       <OutcomeBadge value={job.outcome} />
                     </td>
-                    <td className="mono">{formatFit(job.fit_score)}</td>
                     <td>
                       <ApplyBadge value={job.apply_status} />
                     </td>
@@ -173,6 +192,18 @@ export function JobsPage({ onChanged }: JobsPageProps) {
             </table>
           ) : null}
         </div>
+          <Pagination
+            page={paging.page}
+            pageSize={pageSize}
+            total={paging.total}
+            onPage={setPage}
+            onPageSize={(size) => {
+              setPageSize(size)
+              setPage(1)
+            }}
+            noun="jobs"
+          />
+        </div>
 
         {selected ? (
           <JobDetail
@@ -181,6 +212,33 @@ export function JobsPage({ onChanged }: JobsPageProps) {
           />
         ) : null}
       </div>
+    </section>
+  )
+}
+
+function JevSection({
+  title,
+  answer,
+}: {
+  title: string
+  answer: Job['location_eligibility']
+}) {
+  return (
+    <section>
+      <h3>{title}</h3>
+      {answer ? (
+        <>
+          <div className="detail-meta">
+            <OutcomeBadge value={jevChoice(answer)} />
+            {typeof answer === 'object' && formatConfidence(answer.confidence) ? (
+              <span className="mono">{formatConfidence(answer.confidence)}</span>
+            ) : null}
+          </div>
+          {jevReason(answer) ? <pre className="reason">{jevReason(answer)}</pre> : null}
+        </>
+      ) : (
+        <p>Not saved with this job. The next triage run stores it.</p>
+      )}
     </section>
   )
 }
@@ -205,7 +263,7 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
         <OutcomeBadge value={job.outcome} />
         <ApplyBadge value={job.apply_status} />
         {job.easy_apply ? <span className="badge badge-muted">Easy Apply</span> : null}
-        <span className="mono">fit {formatFit(job.fit_score)}</span>
+        <EmploymentBadge value={job.employment_type} />
       </div>
       {job.review_reason ? (
         <section>
@@ -213,6 +271,8 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
           <pre className="reason">{job.review_reason}</pre>
         </section>
       ) : null}
+      <JevSection title="Location outcome" answer={job.location_eligibility} />
+      <JevSection title="Skills outcome" answer={job.skills_outcome} />
       <section>
         <h3>Description</h3>
         <pre className="description">{job.raw_description || 'No description stored.'}</pre>

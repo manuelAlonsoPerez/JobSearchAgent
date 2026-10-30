@@ -4,18 +4,24 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 from jobsearchagent.cli import (
     DiscoverResult,
     _search_places,
     classify_result,
+    discover_jobs,
     format_counts,
+    jobs_this_search,
     main,
+    normalize_search_queries,
     parse_args,
     run_batch,
 )
+from jobsearchagent.config import search_queries
 from jobsearchagent.discovery.linkedin import WORK_TYPE_CODES, SearchFilters
 from jobsearchagent.models import JobState
 
@@ -48,7 +54,7 @@ class ParseArgsTests(unittest.TestCase):
             ]
         )
         self.assertEqual(args.command, "run")
-        self.assertEqual(args.query, "ServiceNow developer")
+        self.assertEqual(args.queries, ["ServiceNow developer"])
         self.assertEqual(args.locations, ["Spain"])
         self.assertTrue(args.dry_run)
         self.assertTrue(args.easy_apply_only)
@@ -78,7 +84,27 @@ class ParseArgsTests(unittest.TestCase):
         self.assertEqual(args.command, "discover")
         self.assertFalse(args.easy_apply_only)
         self.assertEqual(args.limit, 3)
-        self.assertEqual(args.query, "React")
+        self.assertIsNone(args.max_jobs)
+        self.assertEqual(args.queries, ["React"])
+
+    def test_max_jobs_flag(self) -> None:
+        args = parse_args(["run", "--query", "React", "--max-jobs", "80", "--dry-run"])
+        self.assertEqual(args.max_jobs, 80)
+        self.assertEqual(args.limit, 20)
+
+    def test_omitted_query_uses_searches_yaml(self) -> None:
+        args = parse_args(["run", "--dry-run"])
+        self.assertIsNone(args.queries)
+        self.assertIsNone(args.tier)
+        queries = normalize_search_queries(args.queries, max_tier=args.tier)
+        self.assertGreater(len(queries), 1)
+        self.assertEqual(queries[0], "ServiceNow developer")
+
+    def test_repeated_query_keeps_explicit_searches(self) -> None:
+        args = parse_args(
+            ["run", "--query", "ServiceNow", "--query", "AI developer", "--dry-run"]
+        )
+        self.assertEqual(args.queries, ["ServiceNow", "AI developer"])
 
     def test_serve_binds_localhost_by_default(self) -> None:
         args = parse_args(["serve", "--port", "9000"])
@@ -130,8 +156,8 @@ class RunBatchTests(unittest.TestCase):
         invoked: list[str] = []
         dry_runs: list[bool | None] = []
 
-        def discover_fn(query: str, locations: Any, **kwargs: Any) -> DiscoverResult:
-            self.assertEqual(query, "ServiceNow developer")
+        def discover_fn(query: Any, locations: Any, **kwargs: Any) -> DiscoverResult:
+            self.assertEqual(list(query), ["ServiceNow developer"])
             self.assertEqual(list(locations), ["Spain"])
             self.assertTrue(kwargs.get("easy_apply_only"))
             return DiscoverResult(jobs=list(seeds), duplicate=2)
@@ -354,6 +380,26 @@ class MainTests(unittest.TestCase):
         self.assertIn("discovered: 1", "\n".join(lines))
         self.assertIn("applied: 0", "\n".join(lines))
 
+    def test_run_without_query_discovers_yaml_searches(self) -> None:
+        seen: list[Any] = []
+
+        def discover_fn(query: Any, locations: Any, **_kwargs: Any) -> DiscoverResult:
+            seen.append(list(query))
+            return DiscoverResult(jobs=[], duplicate=0)
+
+        code = main(
+            ["run", "--dry-run", "--tier", "1"],
+            output_fn=lambda _: None,
+            discover_fn=discover_fn,
+            invoke_fn=lambda seed, **kw: seed,
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0], search_queries(max_tier=1))
+        self.assertIn("ServiceNow developer", seen[0])
+        self.assertIn("AI developer", seen[0])
+        self.assertNotIn("utvikler", seen[0])
+
 
 class SearchPlaceTests(unittest.TestCase):
     def test_geo_id_replaces_text_locations(self) -> None:
@@ -364,3 +410,92 @@ class SearchPlaceTests(unittest.TestCase):
 
     def test_work_type_remote_code(self) -> None:
         self.assertEqual(WORK_TYPE_CODES["remote"], "2")
+
+
+class ConfiguredSearchTests(unittest.TestCase):
+    def test_yaml_queries_are_ordered_by_tier(self) -> None:
+        queries = search_queries()
+        self.assertGreater(len(queries), 5)
+        self.assertEqual(queries[0], "ServiceNow developer")
+        self.assertIn("utvikler", queries)
+
+        tier1 = search_queries(max_tier=1)
+        self.assertTrue(all(item in queries for item in tier1))
+        self.assertNotIn("utvikler", tier1)
+        self.assertIn("AI developer", tier1)
+
+    def test_explicit_query_overrides_yaml(self) -> None:
+        self.assertEqual(
+            normalize_search_queries("React"),
+            ["React"],
+        )
+        self.assertEqual(
+            normalize_search_queries(["ServiceNow", "  AI developer  "]),
+            ["ServiceNow", "AI developer"],
+        )
+
+
+class SequentialLimitTests(unittest.TestCase):
+    def test_jobs_this_search_uses_per_search_until_max_jobs(self) -> None:
+        self.assertEqual(jobs_this_search(20, 0, None), 20)
+        self.assertEqual(jobs_this_search(20, 0, 50), 20)
+        self.assertEqual(jobs_this_search(20, 45, 50), 5)
+        self.assertEqual(jobs_this_search(20, 50, 50), 0)
+
+    def test_each_search_gets_full_limit_until_max_jobs(self) -> None:
+        calls: list[tuple[str, str, int]] = []
+        job_index = 0
+
+        class FakeDiscovery:
+            def __init__(self, **_kwargs: Any) -> None:
+                return None
+
+            def ensure_login(self, _page: Any) -> None:
+                return None
+
+            def discover_with_page(
+                self,
+                _page: Any,
+                query: str,
+                location: str,
+                limit: int,
+                **_kwargs: Any,
+            ) -> list[JobState]:
+                nonlocal job_index
+                calls.append((query, location, limit))
+                found: list[JobState] = []
+                for _ in range(limit):
+                    job_index += 1
+                    found.append(
+                        _job(
+                            source_job_id=str(job_index),
+                            url=f"https://www.linkedin.com/jobs/view/{job_index}/",
+                        )
+                    )
+                return found
+
+        @contextmanager
+        def fake_browser(**_kwargs: Any) -> Any:
+            context = MagicMock()
+            context.pages = [object()]
+            yield context
+
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch("jobsearchagent.cli.LinkedInDiscovery", FakeDiscovery),
+                patch("jobsearchagent.cli.browser_session", fake_browser),
+            ):
+                result = discover_jobs(
+                    ["A", "B"],
+                    ["Norway", "Remote"],
+                    limit=5,
+                    max_jobs=8,
+                    database_path=Path(directory) / "jobs.db",
+                    output_fn=lambda _: None,
+                )
+
+        self.assertEqual(
+            [(query, place, cap) for query, place, cap in calls],
+            [("A", "Norway", 5), ("A", "Remote", 3)],
+        )
+        self.assertEqual(len(result.jobs), 8)

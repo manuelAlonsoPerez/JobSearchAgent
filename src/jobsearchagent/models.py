@@ -86,6 +86,7 @@ class JobState(TypedDict, total=False):
     title: str
     company: str
     location: str
+    employment_type: str
     site: str
     raw_description: str
     easy_apply: bool
@@ -100,3 +101,5 @@ class JobState(TypedDict, total=False):
     apply_url: str | None
     review_reason: str | None
     attempts: int
+    location_eligibility: dict[str, Any]
+    skills_outcome: dict[str, Any]

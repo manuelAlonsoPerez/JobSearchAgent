@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 
 from .browser import session as browser_session
-from .config import get_settings
+from .config import get_settings, search_queries
 from .database import init_db
 from .discovery.linkedin import (
     POSTED_WITHIN_SECONDS,
@@ -100,8 +100,23 @@ def tally(counts: RunCounts, state: JobState) -> str:
     return bucket
 
 
+def jobs_this_search(
+    per_search: int,
+    collected: int,
+    max_jobs: int | None,
+) -> int:
+    """How many new jobs the next query×location may collect."""
+
+    if max_jobs is None:
+        return per_search
+    remaining = max_jobs - collected
+    if remaining < 1:
+        return 0
+    return min(per_search, remaining)
+
+
 def discover_jobs(
-    query: str,
+    query: str | Sequence[str] | None,
     locations: Sequence[str],
     *,
     limit: int = 20,
@@ -110,41 +125,62 @@ def discover_jobs(
     database_path: str | Path | None = None,
     output_fn: Callable[[str], None] = _emit,
     input_fn: Callable[[str], str] = input,
+    max_tier: int | None = None,
+    max_jobs: int | None = None,
 ) -> DiscoverResult:
-    """Search LinkedIn and persist unseen jobs. Skips jobs already in SQLite."""
+    """Search LinkedIn and persist unseen jobs. Skips jobs already in SQLite.
+
+    ``query`` may be one string, several strings, or omitted. When omitted,
+    queries come from ``searches.yaml`` (optionally capped with ``max_tier``).
+    One browser session covers every query × location pair. ``limit`` is new
+    jobs per pair; ``max_jobs`` optionally caps the whole run.
+    """
 
     if limit < 1:
         raise ValueError("limit must be at least 1")
+    if max_jobs is not None and max_jobs < 1:
+        raise ValueError("max_jobs must be at least 1")
+    queries = normalize_search_queries(query, max_tier=max_tier)
     search = filters or SearchFilters(easy_apply=easy_apply_only)
     places = _search_places(locations, search)
+    pairs = [(item, place) for item in queries for place in places]
+    cap = (
+        f", stop after {max_jobs} new jobs" if max_jobs is not None else ""
+    )
+    output_fn(
+        f"{len(queries)} search query(ies) × {len(places)} location(s) "
+        f"({len(pairs)} LinkedIn searches, up to {limit} new jobs each{cap})"
+    )
     init_db(database_path)
     stats: dict[str, int] = {"duplicate": 0}
     discovery = LinkedInDiscovery(input_fn=input_fn, output_fn=output_fn)
     jobs: list[JobState] = []
-    remaining = limit
     with browser_session(headless=False) as context:
         page = context.pages[0] if context.pages else context.new_page()
         discovery.ensure_login(page)
-        for index, location in enumerate(places):
-            share, extra = divmod(remaining, len(places) - index)
-            search_limit = share + extra
+        for index, (search_query, location) in enumerate(pairs):
+            search_limit = jobs_this_search(limit, len(jobs), max_jobs)
             if search_limit < 1:
+                output_fn(f"Reached --max-jobs {max_jobs}; stopping discovery.")
                 break
+            place_label = location or "geoId"
+            output_fn(
+                f"Query {index + 1}/{len(pairs)}: {search_query!r} ({place_label})"
+            )
             found = discovery.discover_with_page(
                 page,
-                query,
+                search_query,
                 location,
                 search_limit,
                 filters=search,
                 stats=stats,
             )
             jobs.extend(found)
-            remaining = max(0, remaining - len(found))
     return DiscoverResult(jobs=jobs, duplicate=int(stats.get("duplicate") or 0))
 
 
 def run_batch(
-    query: str,
+    query: str | Sequence[str] | None,
     locations: Sequence[str],
     *,
     limit: int = 20,
@@ -157,14 +193,17 @@ def run_batch(
     discover_fn: DiscoverFn | None = None,
     invoke_fn: InvokeFn | None = None,
     skip_preflight: bool = False,
+    max_tier: int | None = None,
+    max_jobs: int | None = None,
 ) -> RunCounts:
     """Discover jobs, run the G1 graph on each, and return G2 counts."""
 
     if not skip_preflight:
         _preflight_jev(output_fn)
     counts = RunCounts()
+    queries = normalize_search_queries(query, max_tier=max_tier)
     result = (discover_fn or discover_jobs)(
-        query,
+        queries,
         locations,
         limit=limit,
         easy_apply_only=easy_apply_only,
@@ -172,6 +211,8 @@ def run_batch(
         database_path=database_path,
         output_fn=output_fn,
         input_fn=input_fn,
+        max_tier=max_tier,
+        max_jobs=max_jobs,
     )
     counts.discovered = len(result.jobs)
     counts.duplicate = result.duplicate
@@ -271,15 +312,21 @@ def main(
     locations = arguments.locations
     dry_run = True if arguments.dry_run else None
     filters = _filters_from_args(arguments)
+    queries = normalize_search_queries(
+        arguments.queries,
+        max_tier=arguments.tier,
+    )
     if arguments.command == "discover":
         result = (discover_fn or discover_jobs)(
-            arguments.query,
+            queries,
             locations or _locations(None),
             limit=arguments.limit,
             easy_apply_only=arguments.easy_apply_only,
             filters=filters,
             database_path=arguments.db_path,
             output_fn=output_fn,
+            max_tier=arguments.tier,
+            max_jobs=arguments.max_jobs,
         )
         for index, job in enumerate(result.jobs, start=1):
             output_fn(
@@ -294,7 +341,7 @@ def main(
         return 0
 
     counts = run_batch(
-        arguments.query,
+        queries,
         locations or _locations(None),
         limit=arguments.limit,
         dry_run=dry_run,
@@ -305,6 +352,8 @@ def main(
         discover_fn=discover_fn,
         invoke_fn=invoke_fn,
         skip_preflight=discover_fn is not None,
+        max_tier=arguments.tier,
+        max_jobs=arguments.max_jobs,
     )
     output_fn("")
     output_fn(format_counts(counts))
@@ -314,8 +363,22 @@ def main(
 def _add_shared_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--query",
-        default="ServiceNow developer",
-        help='LinkedIn search query. Default: "ServiceNow developer".',
+        action="append",
+        dest="queries",
+        help=(
+            "LinkedIn search query. Repeat for several. "
+            "Omit to run every query in searches.yaml."
+        ),
+    )
+    parser.add_argument(
+        "--tier",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "When --query is omitted, only searches.yaml queries at this "
+            "tier or below (1 = exact)."
+        ),
     )
     parser.add_argument(
         "--location",
@@ -354,7 +417,17 @@ def _add_shared_flags(parser: argparse.ArgumentParser) -> None:
         "--limit",
         type=int,
         default=20,
-        help="Maximum new jobs to collect. Default: 20.",
+        help="Maximum new jobs per query and location. Default: 20.",
+    )
+    parser.add_argument(
+        "--max-jobs",
+        dest="max_jobs",
+        type=int,
+        default=None,
+        help=(
+            "Optional cap on new jobs for the whole run. "
+            "Omit to walk every search."
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -395,6 +468,22 @@ def _filters_from_args(arguments: argparse.Namespace) -> SearchFilters:
         easy_apply=arguments.easy_apply_only,
         sort=SORT_CODES[arguments.sort],
     )
+
+
+def normalize_search_queries(
+    query: str | Sequence[str] | None,
+    *,
+    max_tier: int | None = None,
+) -> list[str]:
+    """Use explicit --query values, or the configured searches.yaml list."""
+
+    if isinstance(query, str):
+        query = [query]
+    if query:
+        cleaned = [str(item).strip() for item in query if str(item).strip()]
+        if cleaned:
+            return cleaned
+    return search_queries(max_tier=max_tier)
 
 
 def _search_places(locations: Sequence[str], filters: SearchFilters) -> list[str]:

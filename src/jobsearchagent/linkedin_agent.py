@@ -7,7 +7,7 @@ import contextlib
 import json
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -145,6 +145,14 @@ class LinkedInAgent:
 
                 details = update.pop("triage_details", {})
                 state.update(update)
+                if isinstance(details, Mapping):
+                    if details.get("location_eligibility") is not None:
+                        state["location_eligibility"] = details["location_eligibility"]
+                    skill = details.get("skills_outcome")
+                    if skill is None:
+                        skill = details.get("non_location_outcome")
+                    if skill is not None:
+                        state["skills_outcome"] = skill
                 state.update(
                     decide_requirements(
                         state,
@@ -245,7 +253,6 @@ class LinkedInAgent:
             "location": state.get("location"),
             "profile_id": state.get("profile_id"),
             "outcome": state.get("outcome"),
-            "fit_score": state.get("fit_score"),
             "required_artifacts": state.get("required_artifacts", []),
             "apply_status": state.get("apply_status"),
             "review_reason": state.get("review_reason"),

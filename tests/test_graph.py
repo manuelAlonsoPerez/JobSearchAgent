@@ -178,7 +178,6 @@ class GraphRoutingTests(unittest.TestCase):
             triage_fn=lambda state: {
                 "outcome": "accept",
                 "profile_id": "servicenow-developer",
-                "fit_score": 1.4,
                 "triage_details": {
                     "profile": {
                         "choice": "servicenow-developer",
@@ -193,7 +192,6 @@ class GraphRoutingTests(unittest.TestCase):
                         "choice": "accept",
                         "rationale": "ServiceNow skills match.",
                     },
-                    "fit": {"score": 1.4},
                 },
             },
             form_fn=lambda state, config=None: {"apply_status": "dry_run_ready"},
@@ -208,7 +206,8 @@ class GraphRoutingTests(unittest.TestCase):
         self.assertIn("location=eligible", text)
         self.assertIn("outcome=accept", text)
         self.assertIn("Spain is listed.", text)
-        self.assertIn('"fit_score": 1.4', text)
+        self.assertNotIn("fit=", text)
+        self.assertNotIn('"fit_score"', text)
         self.assertEqual(
             result.get("location_eligibility"),
             {"choice": "eligible", "confidence": 0.9, "rationale": "Spain is listed."},

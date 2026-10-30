@@ -4,7 +4,6 @@ import { Pagination } from '../components/Pagination'
 import { ApplyBadge, EmploymentBadge, OutcomeBadge } from '../components/StatusBadge'
 import {
   formatConfidence,
-  formatFit,
   formatWhen,
   jevChoice,
   jevReason,
@@ -157,7 +156,6 @@ export function JobsPage({ onChanged }: JobsPageProps) {
                   <th>Role</th>
                   <th>Location</th>
                   <th>Outcome</th>
-                  <th>Fit</th>
                   <th>Apply</th>
                   <th>Updated</th>
                 </tr>
@@ -184,7 +182,6 @@ export function JobsPage({ onChanged }: JobsPageProps) {
                     <td>
                       <OutcomeBadge value={job.outcome} />
                     </td>
-                    <td className="mono">{formatFit(job.fit_score)}</td>
                     <td>
                       <ApplyBadge value={job.apply_status} />
                     </td>
@@ -267,7 +264,6 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
         <ApplyBadge value={job.apply_status} />
         {job.easy_apply ? <span className="badge badge-muted">Easy Apply</span> : null}
         <EmploymentBadge value={job.employment_type} />
-        <span className="mono">fit {formatFit(job.fit_score)}</span>
       </div>
       {job.review_reason ? (
         <section>

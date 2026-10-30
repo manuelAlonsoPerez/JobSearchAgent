@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { fetchJob, fetchReviewQueue, setReviewStatus } from '../api'
 import { Pagination } from '../components/Pagination'
 import { ApplyBadge, EmploymentBadge, OutcomeBadge, ReviewBadge } from '../components/StatusBadge'
-import { formatFit, formatWhen, label } from '../format'
+import { formatWhen, label } from '../format'
 import { PAGE_SIZE, paginate } from '../pagination'
 import type { Job, ReviewItem, ReviewStatus } from '../types'
 
@@ -259,7 +259,6 @@ function ReviewDetail({
         <OutcomeBadge value={item.outcome} />
         <ApplyBadge value={item.apply_status} />
         <EmploymentBadge value={item.employment_type} />
-        <span className="mono">fit {formatFit(item.fit_score)}</span>
       </div>
       <section>
         <h3>Why it is here</h3>

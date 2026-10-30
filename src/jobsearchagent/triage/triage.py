@@ -235,7 +235,7 @@ def select_profile(
 ) -> str:
     """Pick the one profile whose titles and skills best match the job.
 
-    This is deterministic so triage only spends one JEV call on outcome/fit.
+    This is deterministic so triage only spends one JEV call on location and skills.
     """
 
     title = str(state.get("title") or "").casefold()
@@ -312,7 +312,7 @@ def triage(
         )
         output(
             f"Selected profile '{profile_id}'. "
-            "JEV: evaluating location, outcome, and fit..."
+            "JEV: evaluating location and skills..."
         )
         answers = client.ask(
             state={
@@ -387,25 +387,6 @@ def triage(
                         ),
                     },
                 },
-                "fit": {
-                    "type": "score",
-                    "instructions": (
-                        "Score only selected_profile. Give substantial credit for "
-                        "covered core skills, closely adjacent or transferable "
-                        "experience, and the candidate's multi-year breadth across "
-                        "technologies. Reduce fit for genuinely missing core and "
-                        "secondary skills, but do not score Poor merely because a "
-                        "few core technologies are uncovered when adjacent "
-                        "experience plausibly bridges them."
-                    ),
-                    "criteria": [
-                        "Poor: most of the core is uncovered and not adjacent",
-                        "Partial: a meaningful part of the core is covered or "
-                        "adjacent, with remaining gaps",
-                        "Strong: the core is well covered or clearly bridgeable "
-                        "from adjacent experience",
-                    ],
-                },
             },
         )
     finally:
@@ -414,7 +395,6 @@ def triage(
 
     location_answer = answers.get("location_eligibility", {})
     skill_answer = answers.get("outcome", {})
-    fit_answer = answers.get("fit", {})
     location_choice = (
         location_answer.get("choice")
         if isinstance(location_answer, Mapping)
@@ -433,10 +413,6 @@ def triage(
     else:
         outcome = "accept"
 
-    fit_score = fit_answer.get("score") if isinstance(fit_answer, Mapping) else None
-    if not isinstance(fit_score, (int, float)):
-        raise ValueError("JEV returned no numeric fit score")
-
     review_reason: str | None = None
     if outcome == "needs_confirmation":
         review_reason = (
@@ -452,12 +428,10 @@ def triage(
         "employment_type": recovered["employment_type"],
         "profile_id": profile_id,
         "outcome": cast(Outcome, outcome),
-        "fit_score": float(fit_score),
         "review_reason": review_reason,
         "triage_details": {
             "profile": {"choice": profile_id, "source": "title_and_skills"},
             "location_eligibility": location_answer,
             "skills_outcome": skill_answer,
-            "fit": fit_answer,
         },
     }

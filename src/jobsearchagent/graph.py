@@ -236,7 +236,6 @@ def _log_triage_feedback(
     skill = details.get("skills_outcome") or details.get(
         "non_location_outcome"
     ) or {}
-    fit = details.get("fit") or {}
     location_choice = (
         location.get("choice") if isinstance(location, Mapping) else None
     )
@@ -244,15 +243,13 @@ def _log_triage_feedback(
         "JEV triage: "
         f"profile={result.get('profile_id') or '-'} "
         f"location={location_choice or '-'} "
-        f"outcome={result.get('outcome') or '-'} "
-        f"fit={result.get('fit_score')}"
+        f"outcome={result.get('outcome') or '-'}"
     )
     if result.get("review_reason"):
         output_fn(f"  review_reason: {result.get('review_reason')}")
     for label, answer in (
         ("location_eligibility", location),
         ("skills_outcome", skill),
-        ("fit", fit),
     ):
         if isinstance(answer, Mapping) and answer:
             reason = (
@@ -273,7 +270,6 @@ def _log_triage_feedback(
                 "employment_type": state.get("employment_type"),
                 "profile_id": result.get("profile_id"),
                 "outcome": result.get("outcome"),
-                "fit_score": result.get("fit_score"),
                 "review_reason": result.get("review_reason"),
                 "details": details,
             },

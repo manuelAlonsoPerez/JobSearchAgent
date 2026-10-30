@@ -236,7 +236,6 @@ class LinkedInScraperSmokeTest:
             "profile": details["profile"],
             "location_eligibility": details["location_eligibility"],
             "skills_outcome": details["skills_outcome"],
-            "fit": details["fit"],
             "outcome": {
                 "type": "policy",
                 "choice": update["outcome"],

@@ -253,7 +253,6 @@ class LinkedInAgent:
             "location": state.get("location"),
             "profile_id": state.get("profile_id"),
             "outcome": state.get("outcome"),
-            "fit_score": state.get("fit_score"),
             "required_artifacts": state.get("required_artifacts", []),
             "apply_status": state.get("apply_status"),
             "review_reason": state.get("review_reason"),

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchJob, fetchReviewQueue, setReviewStatus } from '../api'
+import { Pagination } from '../components/Pagination'
 import { ApplyBadge, EmploymentBadge, OutcomeBadge, ReviewBadge } from '../components/StatusBadge'
 import { formatFit, formatWhen, label } from '../format'
+import { PAGE_SIZE, paginate } from '../pagination'
 import type { Job, ReviewItem, ReviewStatus } from '../types'
 
 type ReviewPageProps = {
@@ -22,12 +24,18 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(PAGE_SIZE)
 
   const load = useCallback(() => {
     setLoading(items.length === 0)
     return fetchReviewQueue(filter)
       .then((payload) => {
         setItems(payload.items)
+        setPage((current) => {
+          const nextCount = Math.max(1, Math.ceil(payload.items.length / pageSize) || 1)
+          return Math.min(current, nextCount)
+        })
         setError(null)
         onChanged()
       })
@@ -35,13 +43,15 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
         setError(err instanceof Error ? err.message : 'Failed to load review queue')
       })
       .finally(() => setLoading(false))
-  }, [filter, onChanged])
+  }, [filter, onChanged, pageSize])
 
   useEffect(() => {
     void load()
   }, [load])
 
   const selected = items.find((item) => item.id === selectedId) ?? null
+  const paging = paginate(items, page, pageSize)
+  const visible = paging.slice
 
   useEffect(() => {
     if (!selected?.dedup_key && !selected?.source_job_id) {
@@ -94,7 +104,10 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
               key={option.value}
               type="button"
               className={filter === option.value ? 'chip is-on' : 'chip'}
-              onClick={() => setFilter(option.value)}
+              onClick={() => {
+                setFilter(option.value)
+                setPage(1)
+              }}
             >
               {option.label}
             </button>
@@ -105,6 +118,7 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
       {error ? <p className="banner">{error}</p> : null}
 
       <div className={`workspace ${selected ? 'with-detail' : ''}`}>
+        <div className="list-stack">
         <div className="table-wrap">
           {loading && items.length === 0 ? <p className="empty">Loading queue…</p> : null}
           {!loading && items.length === 0 && !error ? (
@@ -126,7 +140,7 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {visible.map((item) => (
                   <tr
                     key={item.id}
                     className={item.id === selectedId ? 'is-selected' : ''}
@@ -184,6 +198,18 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
               </tbody>
             </table>
           ) : null}
+        </div>
+          <Pagination
+            page={paging.page}
+            pageSize={pageSize}
+            total={paging.total}
+            onPage={setPage}
+            onPageSize={(size) => {
+              setPageSize(size)
+              setPage(1)
+            }}
+            noun="jobs"
+          />
         </div>
 
         {selected ? (

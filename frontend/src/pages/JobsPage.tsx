@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchJob, fetchJobs } from '../api'
+import { Pagination } from '../components/Pagination'
 import { ApplyBadge, EmploymentBadge, OutcomeBadge } from '../components/StatusBadge'
 import { formatFit, formatWhen, label } from '../format'
+import { PAGE_SIZE, paginate } from '../pagination'
 import type { Job } from '../types'
 
 type JobsPageProps = {
@@ -36,6 +38,8 @@ export function JobsPage({ onChanged }: JobsPageProps) {
   const [detail, setDetail] = useState<Job | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(PAGE_SIZE)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query), 200)
@@ -53,6 +57,7 @@ export function JobsPage({ onChanged }: JobsPageProps) {
       .then((payload) => {
         if (cancelled) return
         setJobs(payload.jobs)
+        setPage(1)
         setError(null)
         onChanged()
       })
@@ -89,6 +94,8 @@ export function JobsPage({ onChanged }: JobsPageProps) {
     () => jobs.find((job) => job.dedup_key === selectedId) ?? detail,
     [jobs, selectedId, detail],
   )
+  const paging = paginate(jobs, page, pageSize)
+  const visible = paging.slice
 
   return (
     <section className="page">
@@ -127,6 +134,7 @@ export function JobsPage({ onChanged }: JobsPageProps) {
       {error ? <p className="banner">{error}</p> : null}
 
       <div className={`workspace ${selected ? 'with-detail' : ''}`}>
+        <div className="list-stack">
         <div className="table-wrap">
           {loading && jobs.length === 0 ? <p className="empty">Loading jobs…</p> : null}
           {!loading && jobs.length === 0 && !error ? (
@@ -148,7 +156,7 @@ export function JobsPage({ onChanged }: JobsPageProps) {
                 </tr>
               </thead>
               <tbody>
-                {jobs.map((job) => (
+                {visible.map((job) => (
                   <tr
                     key={job.dedup_key}
                     className={job.dedup_key === selectedId ? 'is-selected' : ''}
@@ -179,6 +187,18 @@ export function JobsPage({ onChanged }: JobsPageProps) {
               </tbody>
             </table>
           ) : null}
+        </div>
+          <Pagination
+            page={paging.page}
+            pageSize={pageSize}
+            total={paging.total}
+            onPage={setPage}
+            onPageSize={(size) => {
+              setPageSize(size)
+              setPage(1)
+            }}
+            noun="jobs"
+          />
         </div>
 
         {selected ? (

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchJob, fetchReviewQueue, setReviewStatus } from '../api'
-import { ApplyBadge, OutcomeBadge, ReviewBadge } from '../components/StatusBadge'
+import { ApplyBadge, EmploymentBadge, OutcomeBadge, ReviewBadge } from '../components/StatusBadge'
 import { formatFit, formatWhen, label } from '../format'
 import type { Job, ReviewItem, ReviewStatus } from '../types'
 
@@ -232,6 +232,7 @@ function ReviewDetail({
         <ReviewBadge value={item.status} />
         <OutcomeBadge value={item.outcome} />
         <ApplyBadge value={item.apply_status} />
+        <EmploymentBadge value={item.employment_type} />
         <span className="mono">fit {formatFit(item.fit_score)}</span>
       </div>
       <section>

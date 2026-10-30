@@ -41,3 +41,20 @@ export function ApplyBadge({ value }: { value: ApplyStatus | null | undefined })
 export function ReviewBadge({ value }: { value: ReviewStatus }) {
   return <Badge tone={value === 'pending' ? 'manual' : 'applied'}>{value}</Badge>
 }
+
+const EMPLOYMENT_TONE: Record<string, Tone> = {
+  contract: 'manual',
+  full_time: 'applied',
+  part_time: 'external',
+  temporary: 'review',
+  internship: 'muted',
+}
+
+export function EmploymentBadge({ value }: { value: string | null | undefined }) {
+  if (!value || value === 'unknown') return null
+  return (
+    <Badge tone={EMPLOYMENT_TONE[value] ?? 'external'}>
+      {value.replaceAll('_', ' ')}
+    </Badge>
+  )
+}

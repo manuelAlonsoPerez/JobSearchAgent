@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchJob, fetchJobs } from '../api'
-import { ApplyBadge, OutcomeBadge } from '../components/StatusBadge'
+import { ApplyBadge, EmploymentBadge, OutcomeBadge } from '../components/StatusBadge'
 import { formatFit, formatWhen, label } from '../format'
 import type { Job } from '../types'
 
@@ -158,7 +158,14 @@ export function JobsPage({ onChanged }: JobsPageProps) {
                       <strong>{label(job.title, 'Untitled role')}</strong>
                       <span className="sub">{label(job.company, 'Unknown company')}</span>
                     </td>
-                    <td>{label(job.location)}</td>
+                    <td>
+                      {label(job.location)}
+                      {job.employment_type && job.employment_type !== 'unknown' ? (
+                        <span className="sub">
+                          <EmploymentBadge value={job.employment_type} />
+                        </span>
+                      ) : null}
+                    </td>
                     <td>
                       <OutcomeBadge value={job.outcome} />
                     </td>
@@ -205,6 +212,7 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
         <OutcomeBadge value={job.outcome} />
         <ApplyBadge value={job.apply_status} />
         {job.easy_apply ? <span className="badge badge-muted">Easy Apply</span> : null}
+        <EmploymentBadge value={job.employment_type} />
         <span className="mono">fit {formatFit(job.fit_score)}</span>
       </div>
       {job.review_reason ? (

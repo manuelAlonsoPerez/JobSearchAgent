@@ -18,6 +18,7 @@ export type Job = {
   title: string | null
   company: string | null
   location: string | null
+  employment_type: string | null
   easy_apply: boolean
   apply_url: string | null
   profile_id: string | null
@@ -44,6 +45,7 @@ export type ReviewItem = {
   title: string | null
   company: string | null
   location: string | null
+  employment_type: string | null
   outcome: Outcome | null
   fit_score: number | null
   apply_status: ApplyStatus | null

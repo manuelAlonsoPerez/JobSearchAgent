@@ -281,11 +281,7 @@ PYTHONPATH=src python -m jobsearchagent discover \
   --limit 20
 
 # Full slice: discover → triage → Easy Apply fill → record
-PYTHONPATH=src python -m jobsearchagent run \
-  --query "ServiceNow developer" \
-  --geo-id 91000007 \
-  --work-type remote \
-  --dry-run
+PYTHONPATH=src python -m jobsearchagent run --query "ServiceNow developer" --geo-id 91000007 --work-type remote --dry-run
 ```
 
 `--easy-apply-only` is the default. `--include-external` also collects jobs that

@@ -259,6 +259,7 @@ def _log_triage_feedback(
                 "title": state.get("title"),
                 "company": state.get("company"),
                 "location": state.get("location"),
+                "employment_type": state.get("employment_type"),
                 "profile_id": result.get("profile_id"),
                 "outcome": result.get("outcome"),
                 "fit_score": result.get("fit_score"),

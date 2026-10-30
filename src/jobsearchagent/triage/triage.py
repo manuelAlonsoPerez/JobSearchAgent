@@ -9,6 +9,7 @@ from typing import Any, cast
 from ..config import get_settings, load_work_profiles
 from ..jev import Jev
 from ..models import JobState, Outcome
+from ..utils.job_meta import enrich_job_metadata
 
 # The selected decision model reprocesses the whole prompt per question with no
 # KV-cache reuse, so prompt size drives latency. Requirements sit near the top
@@ -65,6 +66,7 @@ def _job_payload(state: JobState, *, char_limit: int) -> dict[str, Any]:
         "title": state.get("title", ""),
         "company": state.get("company", ""),
         "location": state.get("location", ""),
+        "employment_type": state.get("employment_type", ""),
         "description": (state.get("raw_description", "") or "")[:char_limit],
     }
 
@@ -284,6 +286,8 @@ def triage(
     """Select one profile locally, then JEV-score only that profile."""
 
     output = progress or (lambda _: None)
+    recovered = enrich_job_metadata(state)
+    state = {**state, **recovered}
     selected_locations = locations or get_settings().job_locations
     if not selected_locations:
         raise ValueError("At least one configured location is required")
@@ -302,6 +306,10 @@ def triage(
     client = jev or Jev()
     owns_client = jev is None
     try:
+        output(
+            f"Listing: {state.get('company')} · {state.get('location')} · "
+            f"{state.get('employment_type') or 'unknown'}"
+        )
         output(
             f"Selected profile '{profile_id}'. "
             "JEV: evaluating location, outcome, and fit..."
@@ -438,6 +446,10 @@ def triage(
         )
 
     return {
+        "title": recovered["title"],
+        "company": recovered["company"],
+        "location": recovered["location"],
+        "employment_type": recovered["employment_type"],
         "profile_id": profile_id,
         "outcome": cast(Outcome, outcome),
         "fit_score": float(fit_score),

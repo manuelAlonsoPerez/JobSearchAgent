@@ -61,7 +61,8 @@ def init_db(path: str | Path | None = None) -> None:
                 attempts INTEGER NOT NULL DEFAULT 0,
                 discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                applied_at TEXT
+                applied_at TEXT,
+                employment_type TEXT
             );
 
             CREATE INDEX IF NOT EXISTS jobs_site_source_id
@@ -77,6 +78,14 @@ def init_db(path: str | Path | None = None) -> None:
             );
             """
         )
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(jobs)")
+        }
+        if "employment_type" not in columns:
+            connection.execute(
+                "ALTER TABLE jobs ADD COLUMN employment_type TEXT"
+            )
 
 
 def seen(
@@ -139,6 +148,7 @@ def upsert_job(
         "review_reason": state.get("review_reason"),
         "apply_status": state.get("apply_status"),
         "attempts": int(state.get("attempts", 0)),
+        "employment_type": state.get("employment_type"),
     }
     with _connection(path) as connection:
         connection.execute(
@@ -146,18 +156,23 @@ def upsert_job(
             INSERT INTO jobs (
                 dedup_key, site, source_job_id, url, title, company, location,
                 raw_description, easy_apply, apply_url, profile_id, outcome,
-                fit_score, review_reason, apply_status, attempts, applied_at
+                fit_score, review_reason, apply_status, attempts, applied_at,
+                employment_type
             ) VALUES (
                 :dedup_key, :site, :source_job_id, :url, :title, :company,
                 :location, :raw_description, :easy_apply, :apply_url,
                 :profile_id, :outcome, :fit_score, :review_reason,
                 :apply_status, :attempts,
-                CASE WHEN :apply_status = 'applied' THEN CURRENT_TIMESTAMP END
+                CASE WHEN :apply_status = 'applied' THEN CURRENT_TIMESTAMP END,
+                :employment_type
             )
             ON CONFLICT(dedup_key) DO UPDATE SET
                 title = excluded.title,
                 company = excluded.company,
                 location = excluded.location,
+                employment_type = COALESCE(
+                    excluded.employment_type, jobs.employment_type
+                ),
                 raw_description = excluded.raw_description,
                 easy_apply = excluded.easy_apply,
                 apply_url = COALESCE(excluded.apply_url, jobs.apply_url),
@@ -303,7 +318,7 @@ def list_jobs(
             dedup_key, site, source_job_id, url, title, company, location,
             easy_apply, apply_url, profile_id, outcome, fit_score,
             review_reason, apply_status, attempts, discovered_at, updated_at,
-            applied_at
+            applied_at, employment_type
         FROM jobs
         WHERE {' AND '.join(clauses)}
         ORDER BY updated_at DESC, discovered_at DESC
@@ -376,7 +391,8 @@ def list_review_queue(
             j.fit_score AS fit_score,
             j.apply_status AS apply_status,
             j.easy_apply AS easy_apply,
-            j.profile_id AS profile_id
+            j.profile_id AS profile_id,
+            j.employment_type AS employment_type
         FROM review_queue AS rq
         LEFT JOIN jobs AS j ON j.url = rq.url
         WHERE {' AND '.join(clauses)}

@@ -274,20 +274,25 @@ used only if one is already on `state.artifacts`.
 `python -m jobsearchagent` is the ApplyPilot-style CLI:
 
 ```bash
-# Search and persist unseen jobs
+# One query, as before
 PYTHONPATH=src python -m jobsearchagent discover \
   --query "ServiceNow developer" \
-  --location Spain \
   --limit 20
 
-# Full slice: discover → triage → Easy Apply fill → record
-PYTHONPATH=src python -m jobsearchagent run --query "ServiceNow developer" --geo-id 91000007 --work-type remote --dry-run
+PYTHONPATH=src python -m jobsearchagent run --query "ServiceNow developer" --dry-run
+
+# Every query in src/config/searches.yaml (tier 1 first)
+PYTHONPATH=src python -m jobsearchagent run --dry-run
+
+# Only exact (tier 1) yaml queries
+PYTHONPATH=src python -m jobsearchagent run --tier 1 --dry-run
 ```
 
 `--easy-apply-only` is the default. `--include-external` also collects jobs that
 open an employer/ATS URL (those are recorded, never filled). `--dry-run` fills
 Easy Apply, closes without Submit, saves the posting, and queues it for
-manual apply.
+manual apply. Omit `--query` to walk `searches.yaml`; repeat `--query` for a
+fixed list. `--limit` is the cap on **new** jobs across all those searches.
 
 ### Local review UI
 

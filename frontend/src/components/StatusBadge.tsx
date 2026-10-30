@@ -1,4 +1,4 @@
-import type { ApplyStatus, Outcome, ReviewStatus } from '../types'
+import type { ApplyStatus, ReviewStatus } from '../types'
 
 type Tone =
   | 'accept'
@@ -13,6 +13,9 @@ const OUTCOME_TONE: Record<string, Tone> = {
   accept: 'accept',
   reject: 'reject',
   needs_confirmation: 'review',
+  eligible: 'accept',
+  ineligible: 'reject',
+  unknown: 'review',
 }
 
 const APPLY_TONE: Record<string, Tone> = {
@@ -28,7 +31,7 @@ function Badge({ tone, children }: { tone: Tone; children: string }) {
   return <span className={`badge badge-${tone}`}>{children}</span>
 }
 
-export function OutcomeBadge({ value }: { value: Outcome | null | undefined }) {
+export function OutcomeBadge({ value }: { value: string | null | undefined }) {
   if (!value) return <Badge tone="muted">untriaged</Badge>
   return <Badge tone={OUTCOME_TONE[value] ?? 'muted'}>{value.replaceAll('_', ' ')}</Badge>
 }

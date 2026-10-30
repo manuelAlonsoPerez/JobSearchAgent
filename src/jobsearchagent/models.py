@@ -101,3 +101,5 @@ class JobState(TypedDict, total=False):
     apply_url: str | None
     review_reason: str | None
     attempts: int
+    location_eligibility: dict[str, Any]
+    skills_outcome: dict[str, Any]

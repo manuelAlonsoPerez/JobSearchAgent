@@ -2,9 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { fetchJob, fetchJobs } from '../api'
 import { Pagination } from '../components/Pagination'
 import { ApplyBadge, EmploymentBadge, OutcomeBadge } from '../components/StatusBadge'
-import { formatFit, formatWhen, label } from '../format'
-import { PAGE_SIZE, paginate } from '../pagination'
+import {
+  formatConfidence,
+  formatFit,
+  formatWhen,
+  jevChoice,
+  jevReason,
+  label,
+} from '../format'
 import type { Job } from '../types'
+import { PAGE_SIZE, paginate } from '../pagination'
 
 type JobsPageProps = {
   onChanged: () => void
@@ -212,6 +219,33 @@ export function JobsPage({ onChanged }: JobsPageProps) {
   )
 }
 
+function JevSection({
+  title,
+  answer,
+}: {
+  title: string
+  answer: Job['location_eligibility']
+}) {
+  return (
+    <section>
+      <h3>{title}</h3>
+      {answer ? (
+        <>
+          <div className="detail-meta">
+            <OutcomeBadge value={jevChoice(answer)} />
+            {typeof answer === 'object' && formatConfidence(answer.confidence) ? (
+              <span className="mono">{formatConfidence(answer.confidence)}</span>
+            ) : null}
+          </div>
+          {jevReason(answer) ? <pre className="reason">{jevReason(answer)}</pre> : null}
+        </>
+      ) : (
+        <p>Not saved with this job. The next triage run stores it.</p>
+      )}
+    </section>
+  )
+}
+
 function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
   const href = job.apply_url || job.url
   return (
@@ -241,6 +275,8 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
           <pre className="reason">{job.review_reason}</pre>
         </section>
       ) : null}
+      <JevSection title="Location outcome" answer={job.location_eligibility} />
+      <JevSection title="Skills outcome" answer={job.skills_outcome} />
       <section>
         <h3>Description</h3>
         <pre className="description">{job.raw_description || 'No description stored.'}</pre>

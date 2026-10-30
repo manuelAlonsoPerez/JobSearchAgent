@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -86,6 +87,21 @@ def init_db(path: str | Path | None = None) -> None:
             connection.execute(
                 "ALTER TABLE jobs ADD COLUMN employment_type TEXT"
             )
+        if "location_eligibility" not in columns:
+            connection.execute(
+                "ALTER TABLE jobs ADD COLUMN location_eligibility TEXT"
+            )
+        if "non_location_outcome" in columns and "skills_outcome" not in columns:
+            connection.execute(
+                "ALTER TABLE jobs RENAME COLUMN non_location_outcome "
+                "TO skills_outcome"
+            )
+            columns.discard("non_location_outcome")
+            columns.add("skills_outcome")
+        if "skills_outcome" not in columns:
+            connection.execute(
+                "ALTER TABLE jobs ADD COLUMN skills_outcome TEXT"
+            )
 
 
 def seen(
@@ -149,6 +165,10 @@ def upsert_job(
         "apply_status": state.get("apply_status"),
         "attempts": int(state.get("attempts", 0)),
         "employment_type": state.get("employment_type"),
+        "location_eligibility": _json_text(state.get("location_eligibility")),
+        "skills_outcome": _json_text(
+            state.get("skills_outcome") or state.get("non_location_outcome")
+        ),
     }
     with _connection(path) as connection:
         connection.execute(
@@ -157,14 +177,14 @@ def upsert_job(
                 dedup_key, site, source_job_id, url, title, company, location,
                 raw_description, easy_apply, apply_url, profile_id, outcome,
                 fit_score, review_reason, apply_status, attempts, applied_at,
-                employment_type
+                employment_type, location_eligibility, skills_outcome
             ) VALUES (
                 :dedup_key, :site, :source_job_id, :url, :title, :company,
                 :location, :raw_description, :easy_apply, :apply_url,
                 :profile_id, :outcome, :fit_score, :review_reason,
                 :apply_status, :attempts,
                 CASE WHEN :apply_status = 'applied' THEN CURRENT_TIMESTAMP END,
-                :employment_type
+                :employment_type, :location_eligibility, :skills_outcome
             )
             ON CONFLICT(dedup_key) DO UPDATE SET
                 title = excluded.title,
@@ -184,6 +204,12 @@ def upsert_job(
                 ),
                 apply_status = COALESCE(excluded.apply_status, jobs.apply_status),
                 attempts = excluded.attempts,
+                location_eligibility = COALESCE(
+                    excluded.location_eligibility, jobs.location_eligibility
+                ),
+                skills_outcome = COALESCE(
+                    excluded.skills_outcome, jobs.skills_outcome
+                ),
                 updated_at = CURRENT_TIMESTAMP,
                 applied_at = CASE
                     WHEN excluded.apply_status = 'applied'
@@ -480,6 +506,23 @@ def summarize_jobs(*, path: str | Path | None = None) -> dict[str, Any]:
     }
 
 
+def _json_text(value: Any) -> str | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        return value
+    return json.dumps(value)
+
+
+def _parse_json_field(value: Any) -> Any:
+    if not isinstance(value, str) or not value.strip():
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
+
 def _job_public_dict(
     row: sqlite3.Row,
     *,
@@ -487,8 +530,19 @@ def _job_public_dict(
 ) -> dict[str, Any]:
     values = dict(row)
     values["easy_apply"] = bool(values.get("easy_apply"))
+    if "location_eligibility" in values:
+        values["location_eligibility"] = _parse_json_field(
+            values.get("location_eligibility")
+        )
+    if "skills_outcome" in values:
+        values["skills_outcome"] = _parse_json_field(
+            values.get("skills_outcome")
+        )
+    values.pop("non_location_outcome", None)
     if not include_description:
         values.pop("raw_description", None)
+        values.pop("location_eligibility", None)
+        values.pop("skills_outcome", None)
     return values
 
 

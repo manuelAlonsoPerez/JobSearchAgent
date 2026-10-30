@@ -352,7 +352,7 @@ def triage(
                 "outcome": {
                     "type": "choice",
                     "instructions": (
-                        "Decide the candidate's non-location outcome using only "
+                        "Decide the candidate's skills outcome using only "
                         "selected_profile and match_rules. Ignore geographic "
                         "eligibility because location_eligibility handles it."
                     ),
@@ -457,7 +457,7 @@ def triage(
         "triage_details": {
             "profile": {"choice": profile_id, "source": "title_and_skills"},
             "location_eligibility": location_answer,
-            "non_location_outcome": skill_answer,
+            "skills_outcome": skill_answer,
             "fit": fit_answer,
         },
     }

@@ -235,7 +235,7 @@ class LinkedInScraperSmokeTest:
         return {
             "profile": details["profile"],
             "location_eligibility": details["location_eligibility"],
-            "jev_non_location_outcome": details["non_location_outcome"],
+            "skills_outcome": details["skills_outcome"],
             "fit": details["fit"],
             "outcome": {
                 "type": "policy",
@@ -243,7 +243,7 @@ class LinkedInScraperSmokeTest:
                 "location_eligibility": details["location_eligibility"].get(
                     "choice"
                 ),
-                "non_location_choice": details["non_location_outcome"].get(
+                "skills_choice": details["skills_outcome"].get(
                     "choice"
                 ),
             },

@@ -1,5 +1,16 @@
 export type Outcome = 'accept' | 'reject' | 'needs_confirmation'
 
+export type JevAnswer = {
+  choice?: string
+  answer?: string
+  confidence?: number
+  score?: number
+  rationale?: string
+  reasoning?: string
+  reason?: string
+  explanation?: string
+}
+
 export type ApplyStatus =
   | 'applied'
   | 'failed'
@@ -31,6 +42,8 @@ export type Job = {
   updated_at: string
   applied_at: string | null
   raw_description?: string | null
+  location_eligibility?: JevAnswer | string | null
+  skills_outcome?: JevAnswer | string | null
 }
 
 export type ReviewItem = {

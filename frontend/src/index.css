@@ -229,7 +229,7 @@ code,
 }
 
 .workspace.with-detail {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .list-stack {
@@ -464,6 +464,10 @@ td strong {
   font-family: Outfit, ui-sans-serif, sans-serif;
   font-size: 0.92rem;
   line-height: 1.45;
+}
+
+.detail section .detail-meta + .reason {
+  margin-top: 0.5rem;
 }
 
 .reason {

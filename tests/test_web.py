@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -89,6 +90,101 @@ class DatabaseUiTests(unittest.TestCase):
         self.assertEqual(detail["raw_description"], "Build ServiceNow applications.")
         by_key = get_job_detail(detail["dedup_key"], path=self.path)
         self.assertEqual(by_key["source_job_id"], "111")
+
+    def test_job_detail_includes_skills_outcome(self) -> None:
+        upsert_job(
+            _job(
+                location_eligibility={
+                    "choice": "eligible",
+                    "confidence": 0.91,
+                    "rationale": "Spain is a configured location.",
+                },
+                skills_outcome={
+                    "choice": "accept",
+                    "confidence": 0.86,
+                    "rationale": "Core ServiceNow stack is covered.",
+                },
+            ),
+            path=self.path,
+        )
+        listed = list_jobs(path=self.path, outcome="accept")
+        self.assertNotIn("location_eligibility", listed[0])
+        self.assertNotIn("skills_outcome", listed[0])
+
+        detail = get_job_detail("111", path=self.path)
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(detail["location_eligibility"]["choice"], "eligible")
+        self.assertEqual(
+            detail["location_eligibility"]["rationale"],
+            "Spain is a configured location.",
+        )
+        self.assertEqual(detail["skills_outcome"]["choice"], "accept")
+        self.assertEqual(
+            detail["skills_outcome"]["rationale"],
+            "Core ServiceNow stack is covered.",
+        )
+        self.assertNotIn("non_location_outcome", detail)
+
+    def test_renames_non_location_outcome_column(self) -> None:
+        path = Path(self.directory.name) / "legacy.db"
+        connection = sqlite3.connect(path)
+        connection.execute(
+            """
+            CREATE TABLE jobs (
+                dedup_key TEXT PRIMARY KEY,
+                site TEXT NOT NULL,
+                source_job_id TEXT,
+                url TEXT NOT NULL,
+                title TEXT,
+                company TEXT,
+                location TEXT,
+                raw_description TEXT,
+                easy_apply INTEGER NOT NULL DEFAULT 0,
+                apply_url TEXT,
+                profile_id TEXT,
+                outcome TEXT,
+                fit_score REAL,
+                review_reason TEXT,
+                apply_status TEXT,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                applied_at TEXT,
+                non_location_outcome TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO jobs (
+                dedup_key, site, source_job_id, url, non_location_outcome
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-111",
+                "LinkedIn Jobs",
+                "111",
+                "https://www.linkedin.com/jobs/view/111/",
+                json.dumps({"choice": "accept", "rationale": "Kept after rename."}),
+            ),
+        )
+        connection.commit()
+        connection.close()
+
+        detail = get_job_detail("111", path=path)
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(detail["skills_outcome"]["choice"], "accept")
+        self.assertEqual(detail["skills_outcome"]["rationale"], "Kept after rename.")
+        self.assertNotIn("non_location_outcome", detail)
+
+        columns = {
+            row[1]
+            for row in sqlite3.connect(path).execute("PRAGMA table_info(jobs)")
+        }
+        self.assertIn("skills_outcome", columns)
+        self.assertNotIn("non_location_outcome", columns)
 
     def test_review_queue_joins_job_and_can_be_marked_done(self) -> None:
         pending = list_review_queue(path=self.path, status="pending")

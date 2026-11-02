@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -122,9 +123,64 @@ def load_sites() -> dict[str, Any]:
 
 
 def load_searches() -> dict[str, Any]:
-    """Load the v1 search configuration."""
+    """Load the v1 search configuration.
 
+    ``searches.yaml`` is the working file; ``searches.example.yaml`` is the
+    fallback when that file is missing.
+    """
+
+    if (CONFIG_DIR / "searches.yaml").is_file():
+        return _load_yaml("searches.yaml")
     return _load_yaml("searches.example.yaml")
+
+
+def search_queries(*, max_tier: int | None = None) -> list[str]:
+    """Return LinkedIn queries from searches.yaml, most specific first.
+
+    ``max_tier`` keeps queries at that tier or lower (1 = exact). Duplicate
+    query strings are dropped, preserving the first occurrence.
+    """
+
+    if max_tier is not None and max_tier < 1:
+        raise ValueError("max_tier must be at least 1")
+
+    selected: list[str] = []
+    seen: set[str] = set()
+    ranked: list[tuple[int, int, str]] = []
+    raw = load_searches().get("queries") or []
+    if not isinstance(raw, list):
+        raise ValueError("searches.yaml 'queries' must be a list")
+
+    for index, row in enumerate(raw):
+        if isinstance(row, str):
+            text, tier = row.strip(), 1
+        elif isinstance(row, Mapping):
+            text = str(row.get("query") or "").strip()
+            try:
+                tier = int(row.get("tier") or 1)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid query tier at index {index}") from exc
+        else:
+            continue
+        if not text:
+            continue
+        if max_tier is not None and tier > max_tier:
+            continue
+        ranked.append((tier, index, text))
+
+    for _tier, _index, text in ranked:
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(text)
+
+    if not selected:
+        raise ValueError(
+            "searches.yaml has no queries"
+            + (f" at tier {max_tier} or below" if max_tier is not None else "")
+        )
+    return selected
 
 
 def load_work_profiles() -> dict[str, Any]:

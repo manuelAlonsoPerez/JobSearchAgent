@@ -105,7 +105,7 @@ class LinkedInScraperSmokeTests(unittest.TestCase):
         self.assertEqual(len(jev.requests), 1)
         self.assertEqual(
             set(jev.requests[0]["questions"]),
-            {"location_eligibility", "outcome", "fit"},
+            {"location_eligibility", "outcome"},
         )
         self.assertNotIn("profile", jev.requests[0]["questions"])
         self.assertEqual(
@@ -122,10 +122,6 @@ class LinkedInScraperSmokeTests(unittest.TestCase):
         outcome_criteria = jev.requests[0]["questions"]["outcome"]["criteria"]
         self.assertIn("core stack", outcome_criteria["accept"])
         self.assertIn("secondary-skill gaps", outcome_criteria["reject"])
-        self.assertIn(
-            "secondary skills",
-            jev.requests[0]["questions"]["fit"]["instructions"],
-        )
         hard_blockers = jev.requests[0]["state"]["match_rules"]["definitions"][
             "confirmed_hard_blockers"
         ]

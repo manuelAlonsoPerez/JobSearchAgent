@@ -24,7 +24,7 @@
       },
       "confidence": 0.9711519947408553
     },
-    "non_location_outcome": {
+    "skills_outcome": {
       "type": "choice",
       "choice": "accept",
       "probabilities": {

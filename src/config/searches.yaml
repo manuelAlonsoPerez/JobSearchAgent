@@ -1,0 +1,288 @@
+# JobSearchAgent search configuration
+# Copy to ~/.applypilot/searches.yaml and customize.
+#
+# Profiles this file targets:
+#   ServiceNow developer / consultant — CSA, CAD, ITSM, Flow Designer,
+#   Integration Hub, JavaScript. About 3 years on the platform.
+#   Full-stack developer — React, TypeScript, Python, Node, FastAPI,
+#   Java, .NET. 8+ years, plus recent RAG / multi-agent work.
+#   AI developer — LLM, RAG, GenAI, multi-agent systems.
+# Markets for now: Norway (Oslo-based) and truly remote roles. EMEA / EU /
+# EEA on a remote listing is acceptable; do not geo-lock the search to EMEA.
+#
+# The direct-site scraper URL-encodes every query into every search site
+# in sites.yaml, and substitutes only the first location below into
+# {location_encoded}. Keep that first location as "Norway".
+# JobSpy runs every query against every location.
+# Single-token queries (ServiceNow, fullstack) are the ones EuroTechJobs
+# can put in a URL path. Phrases are for Indeed, LinkedIn, and similar.
+
+# Search queries. Tier 1 first (exact), then broader matches.
+queries:
+  # ServiceNow
+  - query: "ServiceNow developer"
+    tier: 1
+  - query: "ServiceNow consultant"
+    tier: 1
+  - query: "ServiceNow utvikler"
+    tier: 1
+  # Full stack
+  - query: "full stack developer"
+    tier: 1
+  - query: "fullstack utvikler"
+    tier: 1
+  # AI developer
+  - query: "AI developer"
+    tier: 1
+  - query: "AI engineer"
+    tier: 1
+  - query: "AI-utvikler"
+    tier: 1
+
+  # Same roles, shorter tokens and titles Norwegian boards actually use
+  - query: "ServiceNow"
+    tier: 2
+  - query: "fullstack"
+    tier: 2
+  - query: "react developer"
+    tier: 2
+  - query: "python developer"
+    tier: 2
+  - query: "frontend developer"
+    tier: 2
+  - query: "backend developer"
+    tier: 2
+  - query: "LLM engineer"
+    tier: 2
+  - query: "RAG engineer"
+    tier: 2
+  - query: "GenAI engineer"
+    tier: 2
+  - query: "AI software engineer"
+    tier: 2
+
+  # Adjacent stacks from the CVs. Wider, lower precision.
+  - query: "java developer"
+    tier: 3
+  - query: ".NET developer"
+    tier: 3
+  - query: "node.js developer"
+    tier: 3
+  - query: "machine learning engineer"
+    tier: 3
+  - query: "applied AI engineer"
+    tier: 3
+  - query: "multi-agent engineer"
+    tier: 3
+  - query: "LangChain developer"
+    tier: 3
+  - query: "utvikler"
+    tier: 3
+
+# Locations. The first entry is what {location_encoded} receives.
+# Norway: local roles. Remote: any truly remote listing, including those
+# LinkedIn only surfaces under Job type = Contract. EMEA is not a search
+# geo here — it is an accepted posted location for remote jobs.
+locations:
+  - location: "Norway"
+    remote: false
+  - location: "Remote"
+    remote: true
+
+# LinkedIn workplace / job-type hints. Remote is the workplace filter.
+# Contract is in scope because some true-remote roles are flagged only
+# as Contract (or Temporary) and never as Workplace = Remote.
+work_types:
+  - remote
+job_types:
+  - full_time
+  - contract
+  - temporary
+
+# Used by the apply prompt to decide which hybrid/onsite cities are eligible.
+# Remote / EMEA / EU / EEA / worldwide stay eligible via the remote terms.
+location:
+  primary: "Norway"
+  accept_patterns:
+    - "Norway"
+    - "Norge"
+    - "Oslo"
+    - "Bergen"
+    - "Trondheim"
+    - "Stavanger"
+    - "Drammen"
+    - "Tromsø"
+    - "Tromso"
+    - "Kristiansand"
+    - "Remote"
+    - "Anywhere"
+    - "Worldwide"
+    - "EMEA"
+    - "Europe"
+    - "EU"
+    - "EEA"
+    - "hjemmekontor"
+    - "fjernarbeid"
+    - "remoto"
+    - "teletrabajo"
+  reject_patterns:
+    - "India"
+    - "Bangalore"
+    - "Bengaluru"
+    - "Hyderabad"
+    - "Philippines"
+    - "Manila"
+    - "Pakistan"
+    - "United States"
+    - "USA"
+    - "Canada"
+    - "United Kingdom"
+    - "London"
+    - "Germany"
+    - "Berlin"
+    - "France"
+    - "Paris"
+    - "Netherlands"
+    - "Amsterdam"
+    - "Portugal"
+    - "Lisbon"
+    - "Lisboa"
+    - "Spain"
+    - "España"
+    - "Espana"
+    - "Madrid"
+    - "Barcelona"
+    - "Italy"
+    - "Poland"
+    - "Romania"
+    - "Sweden"
+    - "Denmark"
+    - "Finland"
+    - "Mexico"
+    - "Colombia"
+    - "Argentina"
+    - "Buenos Aires"
+    - "Brazil"
+    - "Brasil"
+    - "Peru"
+    - "Lima"
+
+# Discovery reads these two lists (substring, case-insensitive).
+# A location containing remote / anywhere / wfh is kept before this runs.
+# EMEA / EU / EEA count as acceptable posted locations for remote jobs.
+# Norwegian ads often say "hjemmekontor" or "fjernarbeid" and never "remote".
+location_accept:
+  - "Norway"
+  - "Norge"
+  - "Oslo"
+  - "Bergen"
+  - "Trondheim"
+  - "Stavanger"
+  - "Drammen"
+  - "Tromsø"
+  - "Tromso"
+  - "Kristiansand"
+  - "EMEA"
+  - "Europe"
+  - "EU"
+  - "EEA"
+  - "hjemmekontor"
+  - "fjernarbeid"
+  - "remoto"
+  - "teletrabajo"
+
+location_reject_non_remote:
+  - "India"
+  - "Bangalore"
+  - "Bengaluru"
+  - "Hyderabad"
+  - "Philippines"
+  - "Manila"
+  - "Pakistan"
+  - "United States"
+  - "USA"
+  - "Canada"
+  - "United Kingdom"
+  - "London"
+  - "Germany"
+  - "Berlin"
+  - "France"
+  - "Paris"
+  - "Netherlands"
+  - "Amsterdam"
+  - "Portugal"
+  - "Lisbon"
+  - "Lisboa"
+  - "Spain"
+  - "España"
+  - "Espana"
+  - "Madrid"
+  - "Barcelona"
+  - "Italy"
+  - "Poland"
+  - "Romania"
+  - "Sweden"
+  - "Denmark"
+  - "Finland"
+  - "Mexico"
+  - "Colombia"
+  - "Argentina"
+  - "Buenos Aires"
+  - "Brazil"
+  - "Brasil"
+  - "Peru"
+  - "Lima"
+
+# Indeed country. JobSpy expects the lowercase country name.
+country: "Norway"
+
+# JobSpy boards. `sites` is the key discovery reads. `boards` is the same
+# list for anything that follows this file's original field name.
+# ZipRecruiter is US-only. Glassdoor is on the blocked-apply list.
+boards:
+  - indeed
+  - linkedin
+sites:
+  - indeed
+  - linkedin
+
+defaults:
+  results_per_site: 50
+  # Norway and remote ServiceNow / fullstack / AI ads stay open for weeks.
+  # 336 hours = 14 days, matching Indeed fromage=14 in sites.yaml.
+  hours_old: 336
+  country_indeed: "norway"
+
+# Skip titles that are the wrong seniority or the wrong craft.
+# Matched case-insensitively against the job title.
+exclude_titles:
+  - "senior director"
+  - "VP "
+  - "vice president"
+  - "chief"
+  - "director"
+  - "intern"
+  - "internship"
+  - "trainee"
+  - "praktikant"
+  - "lærling"
+  - "becario"
+  - "becaria"
+  - "prácticas"
+  - "practicas"
+  - "helpdesk"
+  - "service desk"
+  - "mesa de ayuda"
+  - "scrum master"
+  - "product owner"
+  - "project manager"
+  - "jefe de proyecto"
+  - "comercial"
+  - "recruiter"
+  - "profesor"
+  - "salesforce"
+  - "SAP"
+  - "COBOL"
+  - "mainframe"
+  - "clearance required"
+  - "TS/SCI"

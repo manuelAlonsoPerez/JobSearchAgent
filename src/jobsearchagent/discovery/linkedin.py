@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -17,6 +18,7 @@ from ..browser import session
 from ..config import get_settings, linkedin_search_url, load_searches
 from ..database import seen, upsert_job
 from ..models import JobState
+from ..utils.job_meta import enrich_job_metadata
 from ..utils.text import (
     canonicalize_url,
     clean_job_text,
@@ -44,6 +46,119 @@ POSTED_WITHIN_SECONDS: dict[str, int] = {
     "week": 604_800,
     "month": 2_592_000,
 }
+SECONDS_PER_MONTH = POSTED_WITHIN_SECONDS["month"]
+_RELATIVE_POSTED = re.compile(
+    r"(?:posted|reposted)?\s*(\d+)\s*"
+    r"(minute|hour|day|week|month|year)s?\s+ago",
+    re.IGNORECASE,
+)
+_RELATIVE_UNITS: dict[str, int] = {
+    "minute": 60,
+    "hour": 3_600,
+    "day": 86_400,
+    "week": 604_800,
+    "month": SECONDS_PER_MONTH,
+    "year": 31_536_000,
+}
+
+
+def posted_window_seconds(
+    posted_within: str = "week",
+    month: int | None = None,
+) -> int:
+    """Seconds for LinkedIn ``f_TPR``. ``month`` overrides ``posted_within``."""
+
+    if month is not None:
+        if month < 1:
+            raise ValueError("month must be at least 1")
+        return month * SECONDS_PER_MONTH
+    if posted_within not in POSTED_WITHIN_SECONDS:
+        raise ValueError(f"Unknown posted-within window: {posted_within}")
+    return POSTED_WITHIN_SECONDS[posted_within]
+
+
+def parse_month_count(value: str) -> int:
+    """Argparse type for ``--month N``."""
+
+    try:
+        month = int(value)
+    except ValueError as exc:
+        raise ValueError("month must be an integer") from exc
+    if month < 1:
+        raise ValueError("month must be at least 1")
+    return month
+
+
+def parse_posted_at(
+    *texts: str | None,
+    now: datetime | None = None,
+) -> datetime | None:
+    """Best published date from ISO ``datePosted`` or 'N months ago' text."""
+
+    for text in texts:
+        parsed = _parse_iso_datetime(text)
+        if parsed is not None:
+            return parsed
+    combined = " ".join(item for item in texts if item)
+    return _parse_relative_posted(combined, now=now)
+
+
+def posted_too_old(
+    posted_at: datetime | None,
+    max_age_seconds: int | None,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """True when a parsed publish date is older than the search window."""
+
+    if posted_at is None or not max_age_seconds:
+        return False
+    moment = now or datetime.now(timezone.utc)
+    if posted_at.tzinfo is None:
+        posted_at = posted_at.replace(tzinfo=timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return (moment - posted_at).total_seconds() > max_age_seconds
+
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value or not str(value).strip():
+        return None
+    text = str(value).strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _parse_relative_posted(
+    text: str,
+    *,
+    now: datetime | None = None,
+) -> datetime | None:
+    match = _RELATIVE_POSTED.search(text)
+    if match is None:
+        return None
+    amount = int(match.group(1))
+    unit = match.group(2).casefold()
+    seconds = _RELATIVE_UNITS.get(unit)
+    if seconds is None:
+        return None
+    moment = now or datetime.now(timezone.utc)
+    return moment - timedelta(seconds=amount * seconds)
+
+
+class StaleListing(Exception):
+    """The job's published date is outside the requested search window."""
+
+    def __init__(self, title: str) -> None:
+        super().__init__(title)
+        self.title = title
 WORK_TYPE_CODES: dict[str, str] = {
     "onsite": "1",
     "remote": "2",
@@ -102,6 +217,7 @@ class LinkedInDiscovery:
             raise ValueError("limit must be at least 1")
 
         self._raise_for_security_challenge(page)
+        search = filters or SearchFilters()
         candidates: list[str] = []
         candidate_seen: set[str] = set()
         for page_index in range(self.page_limit):
@@ -109,7 +225,7 @@ class LinkedInDiscovery:
                 query,
                 location,
                 start=page_index * 25,
-                filters=filters,
+                filters=search,
             )
             self.output(f"Searching LinkedIn: {search_url}")
             self._navigate(page, search_url)
@@ -129,7 +245,14 @@ class LinkedInDiscovery:
                     stats["duplicate"] = int(stats.get("duplicate") or 0) + 1
                 continue
             try:
-                state = self._scrape_job(page, url)
+                state = self._scrape_job(
+                    page,
+                    url,
+                    max_age_seconds=search.posted_within_seconds,
+                )
+            except StaleListing as exc:
+                self.output(f"  Skipped (older than date filter): {exc.title}")
+                continue
             except (PlaywrightError, RuntimeError) as exc:
                 self.output(f"Could not read {url}: {exc}")
                 continue
@@ -313,7 +436,13 @@ class LinkedInDiscovery:
             page.wait_for_timeout(800)
         return list(collected.values())[:limit]
 
-    def _scrape_job(self, page: Page, url: str) -> JobState:
+    def _scrape_job(
+        self,
+        page: Page,
+        url: str,
+        *,
+        max_age_seconds: int | None = None,
+    ) -> JobState:
         self._navigate(page, url)
         self._raise_for_security_challenge(page)
         try:
@@ -325,51 +454,25 @@ class LinkedInDiscovery:
             pass
         self._expand_description(page)
 
-        company = self._first_text(
-            page,
-            (
-                ".job-details-jobs-unified-top-card__company-name",
-                ".job-details-jobs-unified-top-card__primary-description-container "
-                "a[href*='/company/']",
-                "a[href*='/company/']",
-            ),
-        )
-        title = self._first_text(
-            page,
-            (
-                ".job-details-jobs-unified-top-card__job-title h1",
-                ".job-details-jobs-unified-top-card__job-title",
-                "h1",
-            ),
-        ) or self._title_from_document(page.title(), company)
-        location = self._first_text(
-            page,
-            (
-                ".job-details-jobs-unified-top-card__primary-description-container",
-                ".jobs-unified-top-card__bullet",
-            ),
-        ) or self._new_layout_location(page, title)
-        description = self._first_text(
-            page,
-            (
-                "#job-details",
-                ".jobs-description__content",
-                ".jobs-box__html-content",
-            ),
-        ) or self._new_layout_description(page)
+        fields = self._listing_fields(page)
+        title = fields["title"]
+        description = fields["description"]
         if not title or not description:
             raise RuntimeError("LinkedIn job title or description was not available")
+        if posted_too_old(fields.get("posted_at"), max_age_seconds):
+            raise StaleListing(title or url)
 
         easy_apply, apply_url = self._application_details(page)
         canonical_url = canonicalize_url(url)
         return JobState(
             url=canonical_url,
             source_job_id=extract_linkedin_job_id(url) or "",
-            title=clean_job_text(title),
-            company=clean_job_text(company) or "Unknown company",
-            location=clean_job_text(location) or "Unknown location",
+            title=title,
+            company=fields["company"],
+            location=fields["location"],
+            employment_type=fields["employment_type"],
             site=SITE,
-            raw_description=clean_job_text(description),
+            raw_description=description,
             easy_apply=easy_apply,
             apply_url=apply_url or canonical_url,
             attempts=0,
@@ -405,15 +508,177 @@ class LinkedInDiscovery:
                 page.wait_for_timeout(300)
                 return
 
+    @classmethod
+    def _listing_fields(cls, page: Page) -> dict[str, Any]:
+        """Read title, company, location, contract, and description from a job page."""
+
+        snapshot = cls._page_listing_snapshot(page)
+        company = cls._first_visible_text(
+            page,
+            (
+                ".job-details-jobs-unified-top-card__company-name",
+                ".jobs-unified-top-card__company-name",
+                ".job-details-jobs-unified-top-card__primary-description-container "
+                "a[href*='/company/']",
+                "a[href*='/company/']",
+                "a[href*='/school/']",
+            ),
+        ) or str(snapshot.get("companyFromLink") or "")
+        title = cls._first_visible_text(
+            page,
+            (
+                ".job-details-jobs-unified-top-card__job-title h1",
+                ".job-details-jobs-unified-top-card__job-title",
+                "h1",
+            ),
+        ) or str(snapshot.get("h1") or "")
+        location = cls._first_visible_text(
+            page,
+            (
+                ".job-details-jobs-unified-top-card__tertiary-description-container",
+                ".jobs-unified-top-card__bullet",
+                ".job-details-jobs-unified-top-card__primary-description-without-tagline",
+                ".job-details-jobs-unified-top-card__primary-description-container",
+            ),
+        ) or cls._new_layout_location(page, title)
+        description = cls._first_visible_text(
+            page,
+            (
+                "#job-details",
+                ".jobs-description__content",
+                ".jobs-box__html-content",
+            ),
+        ) or cls._new_layout_description(page)
+        json_ld = snapshot.get("jsonLd") or {}
+        insights = "\n".join(snapshot.get("insights") or [])
+        recovered = enrich_job_metadata(
+            {
+                "title": title,
+                "company": company,
+                "location": location,
+                "raw_description": description,
+                "document_title": snapshot.get("documentTitle") or page.title(),
+                "company_from_page": snapshot.get("companyFromLink"),
+                "location_from_page": location,
+                "employment_hint": insights,
+                "json_ld": json_ld,
+            }
+        )
+        posted_at = parse_posted_at(
+            json_ld.get("datePosted") if isinstance(json_ld, dict) else None,
+            location,
+            insights,
+        )
+        return {
+            **recovered,
+            "description": clean_job_text(description) or description,
+            "posted_at": posted_at,
+        }
+
     @staticmethod
-    def _first_text(page: Page, selectors: tuple[str, ...]) -> str:
+    def _page_listing_snapshot(page: Page) -> dict[str, Any]:
+        try:
+            snapshot = page.evaluate(
+                """
+                () => {
+                  const clean = (value) => (value || "").replace(/\\s+/g, " ").trim();
+                  const asList = (node) => {
+                    if (!node) return [];
+                    if (Array.isArray(node)) return node.flatMap(asList);
+                    if (Array.isArray(node["@graph"])) return node["@graph"];
+                    return [node];
+                  };
+                  let posting = null;
+                  for (const script of document.querySelectorAll(
+                    'script[type="application/ld+json"]'
+                  )) {
+                    try {
+                      for (const node of asList(JSON.parse(script.textContent || "null"))) {
+                        const types = [].concat(
+                          node && node["@type"] ? node["@type"] : []
+                        );
+                        if (types.includes("JobPosting")) {
+                          posting = node;
+                          break;
+                        }
+                      }
+                    } catch (error) {}
+                    if (posting) break;
+                  }
+                  const rawLocation = posting && posting.jobLocation
+                    ? (Array.isArray(posting.jobLocation)
+                        ? posting.jobLocation[0]
+                        : posting.jobLocation)
+                    : null;
+                  const address = rawLocation && rawLocation.address
+                    ? rawLocation.address
+                    : rawLocation;
+                  const locationParts = address && typeof address === "object"
+                    ? [
+                        address.addressLocality,
+                        address.addressRegion,
+                        address.addressCountry
+                      ].filter(Boolean)
+                    : [typeof address === "string" ? address : ""];
+                  const h1 = document.querySelector("h1");
+                  let scope = h1;
+                  for (let index = 0; index < 8 && scope; index += 1) {
+                    scope = scope.parentElement;
+                  }
+                  const scoped = scope || document;
+                  const companyFromLink = [...scoped.querySelectorAll(
+                    'a[href*="/company/"], a[href*="/school/"]'
+                  )].map((anchor) => clean(anchor.textContent)).find(
+                    (text) => text && text.length >= 2 && text.length <= 80
+                  ) || "";
+                  const insights = [...document.querySelectorAll(
+                    ".job-details-jobs-unified-top-card__job-insight, "
+                    + "li.job-details-fit-level-preferences, [class*='job-insight']"
+                  )].map((element) => clean(element.innerText)).filter(Boolean);
+                  return {
+                    documentTitle: document.title || "",
+                    h1: h1 ? clean(h1.innerText) : "",
+                    companyFromLink,
+                    insights,
+                    jsonLd: posting ? {
+                      title: posting.title || "",
+                      company: (posting.hiringOrganization
+                        && posting.hiringOrganization.name) || "",
+                      location: locationParts.filter(Boolean).join(", "),
+                      employmentType: posting.employmentType || "",
+                      datePosted: posting.datePosted || ""
+                    } : null
+                  };
+                }
+                """
+            )
+        except PlaywrightError:
+            snapshot = {}
+        return snapshot if isinstance(snapshot, dict) else {}
+
+    @staticmethod
+    def _first_visible_text(page: Page, selectors: tuple[str, ...]) -> str:
         for selector in selectors:
-            locator: Locator = page.locator(selector).first
-            if locator.count() and locator.is_visible():
-                text = locator.inner_text(timeout=5_000).strip()
+            locator: Locator = page.locator(selector)
+            try:
+                count = min(int(locator.count()), 8)
+            except PlaywrightError:
+                continue
+            for index in range(count):
+                item = locator.nth(index)
+                try:
+                    if not item.is_visible():
+                        continue
+                    text = item.inner_text(timeout=5_000).strip()
+                except PlaywrightError:
+                    continue
                 if text:
                     return text
         return ""
+
+    @staticmethod
+    def _first_text(page: Page, selectors: tuple[str, ...]) -> str:
+        return LinkedInDiscovery._first_visible_text(page, selectors)
 
     @staticmethod
     def _title_from_document(document_title: str, company: str) -> str:

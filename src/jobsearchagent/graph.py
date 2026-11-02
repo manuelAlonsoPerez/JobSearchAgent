@@ -104,6 +104,15 @@ def build_graph(
             }
         details = result.pop("triage_details", None)
         _log_triage_feedback(state, result, details, output_fn)
+        if isinstance(details, Mapping):
+            location = details.get("location_eligibility")
+            if location is not None:
+                result["location_eligibility"] = location
+            skill = details.get("skills_outcome")
+            if skill is None:
+                skill = details.get("non_location_outcome")
+            if skill is not None:
+                result["skills_outcome"] = skill
         result["messages"] = [
             {"role": "system", "content": f"triage:{result.get('outcome')}"}
         ]
@@ -224,8 +233,9 @@ def _log_triage_feedback(
 
     details = details if isinstance(details, Mapping) else {}
     location = details.get("location_eligibility") or {}
-    skill = details.get("non_location_outcome") or {}
-    fit = details.get("fit") or {}
+    skill = details.get("skills_outcome") or details.get(
+        "non_location_outcome"
+    ) or {}
     location_choice = (
         location.get("choice") if isinstance(location, Mapping) else None
     )
@@ -233,15 +243,13 @@ def _log_triage_feedback(
         "JEV triage: "
         f"profile={result.get('profile_id') or '-'} "
         f"location={location_choice or '-'} "
-        f"outcome={result.get('outcome') or '-'} "
-        f"fit={result.get('fit_score')}"
+        f"outcome={result.get('outcome') or '-'}"
     )
     if result.get("review_reason"):
         output_fn(f"  review_reason: {result.get('review_reason')}")
     for label, answer in (
         ("location_eligibility", location),
-        ("non_location_outcome", skill),
-        ("fit", fit),
+        ("skills_outcome", skill),
     ):
         if isinstance(answer, Mapping) and answer:
             reason = (
@@ -259,9 +267,9 @@ def _log_triage_feedback(
                 "title": state.get("title"),
                 "company": state.get("company"),
                 "location": state.get("location"),
+                "employment_type": state.get("employment_type"),
                 "profile_id": result.get("profile_id"),
                 "outcome": result.get("outcome"),
-                "fit_score": result.get("fit_score"),
                 "review_reason": result.get("review_reason"),
                 "details": details,
             },

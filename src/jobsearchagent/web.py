@@ -123,8 +123,11 @@ def _handler_class(db_path: str | Path | None) -> type[BaseHTTPRequestHandler]:
                 self._send_json(400, {"error": str(exc)})
                 return
             status = payload.get("status")
+            if status is None:
+                self._send_json(400, {"error": "JSON body must include status"})
+                return
             try:
-                item = set_review_status(item_id, str(status or ""), path=db_path)
+                item = set_review_status(item_id, str(status), path=db_path)
             except ValueError as exc:
                 self._send_json(400, {"error": str(exc)})
                 return

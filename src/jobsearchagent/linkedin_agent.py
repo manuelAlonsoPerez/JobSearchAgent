@@ -7,7 +7,7 @@ import contextlib
 import json
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -22,6 +22,8 @@ from .discovery.linkedin import (
     WORK_TYPE_CODES,
     LinkedInDiscovery,
     SearchFilters,
+    parse_month_count,
+    posted_window_seconds,
 )
 from .jev import Jev
 from .models import JobState
@@ -32,6 +34,13 @@ def _emit(message: str) -> None:
     """Print progress and flush immediately so it is not swallowed by buffering."""
 
     print(message, flush=True)
+
+
+def _month_arg(value: str) -> int:
+    try:
+        return parse_month_count(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 class LinkedInAgent:
@@ -145,6 +154,14 @@ class LinkedInAgent:
 
                 details = update.pop("triage_details", {})
                 state.update(update)
+                if isinstance(details, Mapping):
+                    if details.get("location_eligibility") is not None:
+                        state["location_eligibility"] = details["location_eligibility"]
+                    skill = details.get("skills_outcome")
+                    if skill is None:
+                        skill = details.get("non_location_outcome")
+                    if skill is not None:
+                        state["skills_outcome"] = skill
                 state.update(
                     decide_requirements(
                         state,
@@ -245,7 +262,6 @@ class LinkedInAgent:
             "location": state.get("location"),
             "profile_id": state.get("profile_id"),
             "outcome": state.get("outcome"),
-            "fit_score": state.get("fit_score"),
             "required_artifacts": state.get("required_artifacts", []),
             "apply_status": state.get("apply_status"),
             "review_reason": state.get("review_reason"),
@@ -286,6 +302,16 @@ def main() -> None:
         help="Recency filter (f_TPR). Default: week.",
     )
     parser.add_argument(
+        "--month",
+        type=_month_arg,
+        default=None,
+        metavar="N",
+        help=(
+            "Only jobs published in the last N months. "
+            "Overrides --posted-within. 1 is LinkedIn's Past month."
+        ),
+    )
+    parser.add_argument(
         "--work-type",
         choices=[*sorted(WORK_TYPE_CODES), "any"],
         default="remote",
@@ -306,7 +332,10 @@ def main() -> None:
     arguments = parser.parse_args()
 
     filters = SearchFilters(
-        posted_within_seconds=POSTED_WITHIN_SECONDS[arguments.posted_within],
+        posted_within_seconds=posted_window_seconds(
+            arguments.posted_within,
+            arguments.month,
+        ),
         work_type=(
             None
             if arguments.work_type == "any"

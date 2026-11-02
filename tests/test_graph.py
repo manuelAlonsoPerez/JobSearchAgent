@@ -172,12 +172,12 @@ class GraphRoutingTests(unittest.TestCase):
     def test_triage_prints_jev_feedback(self) -> None:
         lines: list[str] = []
 
-        build_graph(
+        recorded: list[JobState] = []
+        result = build_graph(
             checkpointer=InMemorySaver(),
             triage_fn=lambda state: {
                 "outcome": "accept",
                 "profile_id": "servicenow-developer",
-                "fit_score": 1.4,
                 "triage_details": {
                     "profile": {
                         "choice": "servicenow-developer",
@@ -188,13 +188,15 @@ class GraphRoutingTests(unittest.TestCase):
                         "confidence": 0.9,
                         "rationale": "Spain is listed.",
                     },
-                    "non_location_outcome": {"choice": "accept"},
-                    "fit": {"score": 1.4},
+                    "skills_outcome": {
+                        "choice": "accept",
+                        "rationale": "ServiceNow skills match.",
+                    },
                 },
             },
             form_fn=lambda state, config=None: {"apply_status": "dry_run_ready"},
             apply_fn=lambda state, config=None: {},
-            record_fn=lambda state, **kwargs: {},
+            record_fn=lambda state, **kwargs: recorded.append(dict(state)),
             output_fn=lines.append,
         ).invoke(_seed(), {"configurable": {"thread_id": "linkedin:jev-log"}})
 
@@ -204,7 +206,24 @@ class GraphRoutingTests(unittest.TestCase):
         self.assertIn("location=eligible", text)
         self.assertIn("outcome=accept", text)
         self.assertIn("Spain is listed.", text)
-        self.assertIn('"fit_score": 1.4', text)
+        self.assertNotIn("fit=", text)
+        self.assertNotIn('"fit_score"', text)
+        self.assertEqual(
+            result.get("location_eligibility"),
+            {"choice": "eligible", "confidence": 0.9, "rationale": "Spain is listed."},
+        )
+        self.assertEqual(
+            result.get("skills_outcome"),
+            {"choice": "accept", "rationale": "ServiceNow skills match."},
+        )
+        self.assertEqual(
+            recorded[0].get("location_eligibility"),
+            {"choice": "eligible", "confidence": 0.9, "rationale": "Spain is listed."},
+        )
+        self.assertEqual(
+            recorded[0].get("skills_outcome"),
+            {"choice": "accept", "rationale": "ServiceNow skills match."},
+        )
 
     def test_invoke_resumes_after_a_kill(self) -> None:
         saver = InMemorySaver()

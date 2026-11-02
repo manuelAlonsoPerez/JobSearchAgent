@@ -58,6 +58,7 @@ class ScrapedJob:
     location: str
     description: str
     easy_apply: bool
+    employment_type: str = "unknown"
 
 
 class LinkedInScraperSmokeTest:
@@ -223,6 +224,7 @@ class LinkedInScraperSmokeTest:
                 site="LinkedIn Jobs",
                 raw_description=job.description,
                 easy_apply=job.easy_apply,
+                employment_type=job.employment_type,
             ),
             jev=self.jev,
             locations=self.locations,
@@ -233,15 +235,14 @@ class LinkedInScraperSmokeTest:
         return {
             "profile": details["profile"],
             "location_eligibility": details["location_eligibility"],
-            "jev_non_location_outcome": details["non_location_outcome"],
-            "fit": details["fit"],
+            "skills_outcome": details["skills_outcome"],
             "outcome": {
                 "type": "policy",
                 "choice": update["outcome"],
                 "location_eligibility": details["location_eligibility"].get(
                     "choice"
                 ),
-                "non_location_choice": details["non_location_outcome"].get(
+                "skills_choice": details["skills_outcome"].get(
                     "choice"
                 ),
             },
@@ -259,6 +260,7 @@ class LinkedInScraperSmokeTest:
         self.output(f"[{index}/{total}] {job.title}")
         self.output(f"Company: {job.company}")
         self.output(f"Location: {job.location}")
+        self.output(f"Employment: {job.employment_type}")
         self.output(f"Easy Apply: {'yes' if job.easy_apply else 'no'}")
         self.output(f"URL: {job.url}")
         self.output(f"Description extracted: {len(job.description)} characters")
@@ -381,38 +383,9 @@ class LinkedInScraperSmokeTest:
             pass
         self._expand_description(page)
 
-        company = self._first_text(
-            page,
-            (
-                ".job-details-jobs-unified-top-card__company-name",
-                ".job-details-jobs-unified-top-card__primary-description-container "
-                "a[href*='/company/']",
-                "a[href*='/company/']",
-            ),
-        )
-        title = self._first_text(
-            page,
-            (
-                ".job-details-jobs-unified-top-card__job-title h1",
-                ".job-details-jobs-unified-top-card__job-title",
-                "h1",
-            ),
-        ) or self._title_from_document(page.title(), company)
-        location = self._first_text(
-            page,
-            (
-                ".job-details-jobs-unified-top-card__primary-description-container",
-                ".jobs-unified-top-card__bullet",
-            ),
-        ) or self._new_layout_location(page, title)
-        description = self._first_text(
-            page,
-            (
-                "#job-details",
-                ".jobs-description__content",
-                ".jobs-box__html-content",
-            ),
-        ) or self._new_layout_description(page)
+        fields = LinkedInDiscovery._listing_fields(page)
+        title = fields["title"]
+        description = fields["description"]
         if not title or not description:
             raise RuntimeError("LinkedIn job title or description was not available")
 
@@ -420,11 +393,12 @@ class LinkedInScraperSmokeTest:
         return ScrapedJob(
             url=canonicalize_url(url),
             source_job_id=extract_linkedin_job_id(url) or "",
-            title=clean_job_text(title),
-            company=clean_job_text(company) or "Unknown company",
-            location=clean_job_text(location) or "Unknown location",
-            description=clean_job_text(description),
+            title=title,
+            company=fields["company"],
+            location=fields["location"],
+            description=clean_job_text(description) or description,
             easy_apply=easy_apply,
+            employment_type=fields["employment_type"],
         )
 
     @staticmethod

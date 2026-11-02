@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -17,6 +18,14 @@ from .utils.text import (
     extract_linkedin_job_id,
     job_dedup_key,
 )
+
+REVIEW_STATUSES = frozenset({"pending", "applied", "rejected", "done"})
+_JOB_STATUS_FOR_REVIEW = {
+    "pending": "manual",
+    "applied": "applied",
+    "rejected": "rejected",
+    "done": "applied",
+}
 
 
 def _database_path(path: str | Path | None = None) -> Path:
@@ -61,7 +70,8 @@ def init_db(path: str | Path | None = None) -> None:
                 attempts INTEGER NOT NULL DEFAULT 0,
                 discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                applied_at TEXT
+                applied_at TEXT,
+                employment_type TEXT
             );
 
             CREATE INDEX IF NOT EXISTS jobs_site_source_id
@@ -77,6 +87,29 @@ def init_db(path: str | Path | None = None) -> None:
             );
             """
         )
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(jobs)")
+        }
+        if "employment_type" not in columns:
+            connection.execute(
+                "ALTER TABLE jobs ADD COLUMN employment_type TEXT"
+            )
+        if "location_eligibility" not in columns:
+            connection.execute(
+                "ALTER TABLE jobs ADD COLUMN location_eligibility TEXT"
+            )
+        if "non_location_outcome" in columns and "skills_outcome" not in columns:
+            connection.execute(
+                "ALTER TABLE jobs RENAME COLUMN non_location_outcome "
+                "TO skills_outcome"
+            )
+            columns.discard("non_location_outcome")
+            columns.add("skills_outcome")
+        if "skills_outcome" not in columns:
+            connection.execute(
+                "ALTER TABLE jobs ADD COLUMN skills_outcome TEXT"
+            )
 
 
 def seen(
@@ -139,6 +172,11 @@ def upsert_job(
         "review_reason": state.get("review_reason"),
         "apply_status": state.get("apply_status"),
         "attempts": int(state.get("attempts", 0)),
+        "employment_type": state.get("employment_type"),
+        "location_eligibility": _json_text(state.get("location_eligibility")),
+        "skills_outcome": _json_text(
+            state.get("skills_outcome") or state.get("non_location_outcome")
+        ),
     }
     with _connection(path) as connection:
         connection.execute(
@@ -146,18 +184,23 @@ def upsert_job(
             INSERT INTO jobs (
                 dedup_key, site, source_job_id, url, title, company, location,
                 raw_description, easy_apply, apply_url, profile_id, outcome,
-                fit_score, review_reason, apply_status, attempts, applied_at
+                fit_score, review_reason, apply_status, attempts, applied_at,
+                employment_type, location_eligibility, skills_outcome
             ) VALUES (
                 :dedup_key, :site, :source_job_id, :url, :title, :company,
                 :location, :raw_description, :easy_apply, :apply_url,
                 :profile_id, :outcome, :fit_score, :review_reason,
                 :apply_status, :attempts,
-                CASE WHEN :apply_status = 'applied' THEN CURRENT_TIMESTAMP END
+                CASE WHEN :apply_status = 'applied' THEN CURRENT_TIMESTAMP END,
+                :employment_type, :location_eligibility, :skills_outcome
             )
             ON CONFLICT(dedup_key) DO UPDATE SET
                 title = excluded.title,
                 company = excluded.company,
                 location = excluded.location,
+                employment_type = COALESCE(
+                    excluded.employment_type, jobs.employment_type
+                ),
                 raw_description = excluded.raw_description,
                 easy_apply = excluded.easy_apply,
                 apply_url = COALESCE(excluded.apply_url, jobs.apply_url),
@@ -169,6 +212,12 @@ def upsert_job(
                 ),
                 apply_status = COALESCE(excluded.apply_status, jobs.apply_status),
                 attempts = excluded.attempts,
+                location_eligibility = COALESCE(
+                    excluded.location_eligibility, jobs.location_eligibility
+                ),
+                skills_outcome = COALESCE(
+                    excluded.skills_outcome, jobs.skills_outcome
+                ),
                 updated_at = CURRENT_TIMESTAMP,
                 applied_at = CASE
                     WHEN excluded.apply_status = 'applied'
@@ -303,7 +352,7 @@ def list_jobs(
             dedup_key, site, source_job_id, url, title, company, location,
             easy_apply, apply_url, profile_id, outcome, fit_score,
             review_reason, apply_status, attempts, discovered_at, updated_at,
-            applied_at
+            applied_at, employment_type
         FROM jobs
         WHERE {' AND '.join(clauses)}
         ORDER BY updated_at DESC, discovered_at DESC
@@ -356,7 +405,10 @@ def list_review_queue(
     init_db(path)
     clauses = ["1 = 1"]
     params: list[Any] = []
-    if status:
+    if status in {"applied", "done"}:
+        clauses.append("rq.status IN (?, ?)")
+        params.extend(["applied", "done"])
+    elif status:
         clauses.append("rq.status = ?")
         params.append(status)
     sql = f"""
@@ -376,7 +428,8 @@ def list_review_queue(
             j.fit_score AS fit_score,
             j.apply_status AS apply_status,
             j.easy_apply AS easy_apply,
-            j.profile_id AS profile_id
+            j.profile_id AS profile_id,
+            j.employment_type AS employment_type
         FROM review_queue AS rq
         LEFT JOIN jobs AS j ON j.url = rq.url
         WHERE {' AND '.join(clauses)}
@@ -393,21 +446,44 @@ def set_review_status(
     *,
     path: str | Path | None = None,
 ) -> dict[str, Any] | None:
-    """Mark a review-queue row pending or done. Returns the updated item."""
+    """Mark a review item applied, rejected, or pending, and sync the job."""
 
-    if status not in {"pending", "done"}:
-        raise ValueError("Review status must be 'pending' or 'done'")
+    if status not in REVIEW_STATUSES:
+        raise ValueError(
+            "Review status must be 'pending', 'applied', or 'rejected'"
+        )
 
+    stored = "applied" if status == "done" else status
+    job_status = _JOB_STATUS_FOR_REVIEW[status]
     init_db(path)
     with _connection(path) as connection:
+        row = connection.execute(
+            "SELECT url, link FROM review_queue WHERE id = ?",
+            (item_id,),
+        ).fetchone()
+        if row is None:
+            return None
         connection.execute(
             "UPDATE review_queue SET status = ? WHERE id = ?",
-            (status, item_id),
+            (stored, item_id),
         )
-        if connection.execute(
-            "SELECT changes() AS changed"
-        ).fetchone()["changed"] == 0:
-            return None
+        urls = [value for value in (row["url"], row["link"]) if value]
+        if urls:
+            placeholders = ", ".join("?" for _ in urls)
+            connection.execute(
+                f"""
+                UPDATE jobs
+                SET apply_status = ?,
+                    updated_at = CURRENT_TIMESTAMP,
+                    applied_at = CASE
+                        WHEN ? = 'applied' THEN CURRENT_TIMESTAMP
+                        ELSE NULL
+                    END
+                WHERE url IN ({placeholders})
+                   OR apply_url IN ({placeholders})
+                """,
+                (job_status, job_status, *urls, *urls),
+            )
     items = [
         item
         for item in list_review_queue(path=path)
@@ -459,9 +535,32 @@ def summarize_jobs(*, path: str | Path | None = None) -> dict[str, Any]:
         "outcomes": outcomes,
         "apply_statuses": statuses,
         "review_pending": int(review.get("pending", 0)),
-        "review_done": int(review.get("done", 0)),
+        "review_applied": int(review.get("applied", 0) + review.get("done", 0)),
+        "review_rejected": int(review.get("rejected", 0)),
+        "review_done": int(
+            review.get("done", 0)
+            + review.get("applied", 0)
+            + review.get("rejected", 0)
+        ),
         "review_total": sum(review.values()),
     }
+
+
+def _json_text(value: Any) -> str | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        return value
+    return json.dumps(value)
+
+
+def _parse_json_field(value: Any) -> Any:
+    if not isinstance(value, str) or not value.strip():
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
 
 
 def _job_public_dict(
@@ -471,8 +570,19 @@ def _job_public_dict(
 ) -> dict[str, Any]:
     values = dict(row)
     values["easy_apply"] = bool(values.get("easy_apply"))
+    if "location_eligibility" in values:
+        values["location_eligibility"] = _parse_json_field(
+            values.get("location_eligibility")
+        )
+    if "skills_outcome" in values:
+        values["skills_outcome"] = _parse_json_field(
+            values.get("skills_outcome")
+        )
+    values.pop("non_location_outcome", None)
     if not include_description:
         values.pop("raw_description", None)
+        values.pop("location_eligibility", None)
+        values.pop("skills_outcome", None)
     return values
 
 

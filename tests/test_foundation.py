@@ -13,6 +13,7 @@ from jobsearchagent.config import (
     load_searches,
     load_sites,
     load_work_profiles,
+    search_queries,
 )
 from jobsearchagent.models import Artifact, Form, FormField, JobState, merge_artifacts
 
@@ -37,6 +38,7 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("sites", load_sites())
         self.assertIn("queries", load_searches())
         self.assertIn("work_profiles", load_work_profiles())
+        self.assertIn("ServiceNow developer", search_queries())
 
     def test_linkedin_search_url(self) -> None:
         url = linkedin_search_url("ServiceNow developer", "Spain")

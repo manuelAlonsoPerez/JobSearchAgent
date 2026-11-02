@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -90,25 +91,159 @@ class DatabaseUiTests(unittest.TestCase):
         by_key = get_job_detail(detail["dedup_key"], path=self.path)
         self.assertEqual(by_key["source_job_id"], "111")
 
-    def test_review_queue_joins_job_and_can_be_marked_done(self) -> None:
+    def test_job_detail_includes_skills_outcome(self) -> None:
+        upsert_job(
+            _job(
+                location_eligibility={
+                    "choice": "eligible",
+                    "confidence": 0.91,
+                    "rationale": "Spain is a configured location.",
+                },
+                skills_outcome={
+                    "choice": "accept",
+                    "confidence": 0.86,
+                    "rationale": "Core ServiceNow stack is covered.",
+                },
+            ),
+            path=self.path,
+        )
+        listed = list_jobs(path=self.path, outcome="accept")
+        self.assertNotIn("location_eligibility", listed[0])
+        self.assertNotIn("skills_outcome", listed[0])
+
+        detail = get_job_detail("111", path=self.path)
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(detail["location_eligibility"]["choice"], "eligible")
+        self.assertEqual(
+            detail["location_eligibility"]["rationale"],
+            "Spain is a configured location.",
+        )
+        self.assertEqual(detail["skills_outcome"]["choice"], "accept")
+        self.assertEqual(
+            detail["skills_outcome"]["rationale"],
+            "Core ServiceNow stack is covered.",
+        )
+        self.assertNotIn("non_location_outcome", detail)
+
+    def test_renames_non_location_outcome_column(self) -> None:
+        path = Path(self.directory.name) / "legacy.db"
+        connection = sqlite3.connect(path)
+        connection.execute(
+            """
+            CREATE TABLE jobs (
+                dedup_key TEXT PRIMARY KEY,
+                site TEXT NOT NULL,
+                source_job_id TEXT,
+                url TEXT NOT NULL,
+                title TEXT,
+                company TEXT,
+                location TEXT,
+                raw_description TEXT,
+                easy_apply INTEGER NOT NULL DEFAULT 0,
+                apply_url TEXT,
+                profile_id TEXT,
+                outcome TEXT,
+                fit_score REAL,
+                review_reason TEXT,
+                apply_status TEXT,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                applied_at TEXT,
+                non_location_outcome TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO jobs (
+                dedup_key, site, source_job_id, url, non_location_outcome
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-111",
+                "LinkedIn Jobs",
+                "111",
+                "https://www.linkedin.com/jobs/view/111/",
+                json.dumps({"choice": "accept", "rationale": "Kept after rename."}),
+            ),
+        )
+        connection.commit()
+        connection.close()
+
+        detail = get_job_detail("111", path=path)
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(detail["skills_outcome"]["choice"], "accept")
+        self.assertEqual(detail["skills_outcome"]["rationale"], "Kept after rename.")
+        self.assertNotIn("non_location_outcome", detail)
+
+        columns = {
+            row[1]
+            for row in sqlite3.connect(path).execute("PRAGMA table_info(jobs)")
+        }
+        self.assertIn("skills_outcome", columns)
+        self.assertNotIn("non_location_outcome", columns)
+
+    def test_review_queue_joins_job_and_can_be_marked_applied(self) -> None:
         pending = list_review_queue(path=self.path, status="pending")
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0]["title"], "ServiceNow Developer")
         self.assertEqual(pending[0]["company"], "Example")
         self.assertIn("saved for manual apply", pending[0]["reason"])
 
-        updated = set_review_status(pending[0]["id"], "done", path=self.path)
+        updated = set_review_status(pending[0]["id"], "applied", path=self.path)
         self.assertIsNotNone(updated)
         assert updated is not None
-        self.assertEqual(updated["status"], "done")
+        self.assertEqual(updated["status"], "applied")
+        self.assertEqual(updated["apply_status"], "applied")
         self.assertEqual(list_review_queue(path=self.path, status="pending"), [])
+        self.assertEqual(len(list_review_queue(path=self.path, status="applied")), 1)
         self.assertEqual(len(list_review_queue(path=self.path, status="done")), 1)
+
+        job = get_job_detail("111", path=self.path)
+        assert job is not None
+        self.assertEqual(job["apply_status"], "applied")
+        self.assertTrue(job["applied_at"])
 
         stats = summarize_jobs(path=self.path)
         self.assertEqual(stats["jobs"], 2)
         self.assertEqual(stats["outcomes"]["accept"], 1)
+        self.assertEqual(stats["apply_statuses"]["applied"], 1)
+        self.assertEqual(stats["review_applied"], 1)
         self.assertEqual(stats["review_done"], 1)
         self.assertEqual(stats["review_pending"], 0)
+
+    def test_review_queue_marks_rejected_and_reopens(self) -> None:
+        pending = list_review_queue(path=self.path, status="pending")
+        item_id = pending[0]["id"]
+
+        rejected = set_review_status(item_id, "rejected", path=self.path)
+        assert rejected is not None
+        self.assertEqual(rejected["status"], "rejected")
+        self.assertEqual(rejected["apply_status"], "rejected")
+        self.assertEqual(len(list_review_queue(path=self.path, status="rejected")), 1)
+
+        job = get_job_detail("111", path=self.path)
+        assert job is not None
+        self.assertEqual(job["apply_status"], "rejected")
+        self.assertIsNone(job["applied_at"])
+
+        reopened = set_review_status(item_id, "pending", path=self.path)
+        assert reopened is not None
+        self.assertEqual(reopened["status"], "pending")
+        self.assertEqual(reopened["apply_status"], "manual")
+        job = get_job_detail("111", path=self.path)
+        assert job is not None
+        self.assertEqual(job["apply_status"], "manual")
+
+    def test_done_alias_stores_applied(self) -> None:
+        pending = list_review_queue(path=self.path, status="pending")
+        updated = set_review_status(pending[0]["id"], "done", path=self.path)
+        assert updated is not None
+        self.assertEqual(updated["status"], "applied")
+        self.assertEqual(updated["apply_status"], "applied")
 
 
 class HttpApiTests(unittest.TestCase):
@@ -154,17 +289,52 @@ class HttpApiTests(unittest.TestCase):
 
         request = Request(
             self._url(f"/api/review-queue/{item_id}"),
-            data=json.dumps({"status": "done"}).encode("utf-8"),
+            data=json.dumps({"status": "applied"}).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="PATCH",
         )
         with urlopen(request, timeout=5) as response:
             updated = json.loads(response.read().decode("utf-8"))
-        self.assertEqual(updated["status"], "done")
+        self.assertEqual(updated["status"], "applied")
+        self.assertEqual(updated["apply_status"], "applied")
         self.assertEqual(self._get("/api/review-queue?status=pending")["total"], 0)
+        self.assertEqual(self._get("/api/review-queue?status=applied")["total"], 1)
+
+        job = self._get("/api/jobs/111")
+        self.assertEqual(job["apply_status"], "applied")
 
         stats = self._get("/api/stats")
         self.assertEqual(stats["review_done"], 1)
+        self.assertEqual(stats["review_applied"], 1)
+        self.assertEqual(stats["apply_statuses"]["applied"], 1)
+
+    def test_marks_review_item_rejected(self) -> None:
+        queue = self._get("/api/review-queue?status=pending")
+        items = queue["items"]
+        assert isinstance(items, list)
+        item_id = items[0]["id"]
+        request = Request(
+            self._url(f"/api/review-queue/{item_id}"),
+            data=json.dumps({"status": "rejected"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="PATCH",
+        )
+        with urlopen(request, timeout=5) as response:
+            updated = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(updated["status"], "rejected")
+        self.assertEqual(updated["apply_status"], "rejected")
+        self.assertEqual(self._get("/api/jobs/111")["apply_status"], "rejected")
+        self.assertEqual(self._get("/api/review-queue?status=rejected")["total"], 1)
+
+        bad = Request(
+            self._url(f"/api/review-queue/{item_id}"),
+            data=json.dumps({"status": "finished"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="PATCH",
+        )
+        with self.assertRaises(HTTPError) as raised:
+            urlopen(bad, timeout=5)
+        self.assertEqual(raised.exception.code, 400)
 
         missing = Request(
             self._url("/api/jobs/does-not-exist"),

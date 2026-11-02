@@ -36,10 +36,10 @@ match_rules:
     - Require either substantial_core_coverage or that the uncovered core technologies are adjacent_skills, together with any explicit minimum relevant experience being broadly met.
     - Use the skill's years and last_used, not the career total, when the offer names a technology.
     - Treat a skill with level older as a blocker only when it is in the core stack and the offer explicitly requires current or senior depth in it.
-    - Missing secondary skills reduce the fit score but never cause rejection by themselves. A minority of missing core skills that are adjacent_skills also do not cause rejection.
+    - Missing secondary skills never cause rejection by themselves. A minority of missing core skills that are adjacent_skills also do not cause rejection.
     - Reject only when at least one confirmed_hard_blockers condition is supported by explicit offer and profile evidence. Prefer accept, or needs_confirmation, over reject whenever core coverage is partial but meaningful and transferable experience bridges the remaining gap.
     - Return needs_confirmation when a possible hard blocker cannot be confirmed, including an unknown CEFR grade, spoken-language grade such as "alto", numeric English test score, residence requirement, work authorization, or fixed hybrid schedule. A passed TOEFL iBT that met the University of Oslo master's requirement satisfies a plain English requirement. The score is not remembered, so do not treat it as B2, C1, or any number.
-    - Accept when substantial_core_coverage holds or the remaining core technologies are adjacent_skills, the explicit minimum experience is broadly met, and there is no confirmed hard blocker. Secondary and adjacent gaps remain reflected in fit.
+    - Accept when substantial_core_coverage holds or the remaining core technologies are adjacent_skills, the explicit minimum experience is broadly met, and there is no confirmed hard blocker.
 
 shared:
   candidate:

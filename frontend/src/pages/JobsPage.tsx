@@ -31,6 +31,7 @@ const STATUSES = [
   { value: 'failed', label: 'Failed' },
   { value: 'external', label: 'External' },
   { value: 'applied', label: 'Applied' },
+  { value: 'rejected', label: 'Rejected' },
   { value: 'dry_run_ready', label: 'Dry-run ready' },
 ]
 

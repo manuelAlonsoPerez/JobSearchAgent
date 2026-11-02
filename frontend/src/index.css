@@ -302,7 +302,8 @@ code,
 
 table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 th,
@@ -364,12 +365,10 @@ td strong {
 }
 
 .actions {
-  white-space: nowrap;
-}
-
-.actions a,
-.actions button {
-  margin-left: 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.3rem;
 }
 
 .badge {
@@ -492,10 +491,17 @@ td strong {
   justify-content: center;
   background: var(--accent);
   color: var(--accent-ink);
+  border: 1px solid transparent;
   border-radius: 8px;
   padding: 0.5rem 0.8rem;
   text-decoration: none;
   font-weight: 600;
+}
+
+.button.reject {
+  background: color-mix(in srgb, var(--reject) 22%, var(--bg-raised));
+  color: var(--reject);
+  border-color: color-mix(in srgb, var(--reject) 70%, transparent);
 }
 
 .button.small,

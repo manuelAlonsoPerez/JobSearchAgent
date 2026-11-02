@@ -18,8 +18,9 @@ export type ApplyStatus =
   | 'external'
   | 'skipped'
   | 'dry_run_ready'
+  | 'rejected'
 
-export type ReviewStatus = 'pending' | 'done'
+export type ReviewStatus = 'pending' | 'applied' | 'rejected' | 'done'
 
 export type Job = {
   dedup_key: string
@@ -71,6 +72,8 @@ export type Stats = {
   outcomes: Record<string, number>
   apply_statuses: Record<string, number>
   review_pending: number
+  review_applied: number
+  review_rejected: number
   review_done: number
   review_total: number
 }

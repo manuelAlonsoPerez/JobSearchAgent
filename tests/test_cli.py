@@ -116,6 +116,7 @@ class ParseArgsTests(unittest.TestCase):
 class ClassifyTests(unittest.TestCase):
     def test_buckets(self) -> None:
         self.assertEqual(classify_result(_job(apply_status="applied")), "applied")
+        self.assertEqual(classify_result(_job(apply_status="rejected")), "rejected")
         self.assertEqual(
             classify_result(_job(apply_status="dry_run_ready")),
             "dry_run_ready",

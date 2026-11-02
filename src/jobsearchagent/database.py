@@ -19,6 +19,14 @@ from .utils.text import (
     job_dedup_key,
 )
 
+REVIEW_STATUSES = frozenset({"pending", "applied", "rejected", "done"})
+_JOB_STATUS_FOR_REVIEW = {
+    "pending": "manual",
+    "applied": "applied",
+    "rejected": "rejected",
+    "done": "applied",
+}
+
 
 def _database_path(path: str | Path | None = None) -> Path:
     database_path = Path(path or get_settings().db_path).expanduser()
@@ -397,7 +405,10 @@ def list_review_queue(
     init_db(path)
     clauses = ["1 = 1"]
     params: list[Any] = []
-    if status:
+    if status in {"applied", "done"}:
+        clauses.append("rq.status IN (?, ?)")
+        params.extend(["applied", "done"])
+    elif status:
         clauses.append("rq.status = ?")
         params.append(status)
     sql = f"""
@@ -435,21 +446,44 @@ def set_review_status(
     *,
     path: str | Path | None = None,
 ) -> dict[str, Any] | None:
-    """Mark a review-queue row pending or done. Returns the updated item."""
+    """Mark a review item applied, rejected, or pending, and sync the job."""
 
-    if status not in {"pending", "done"}:
-        raise ValueError("Review status must be 'pending' or 'done'")
+    if status not in REVIEW_STATUSES:
+        raise ValueError(
+            "Review status must be 'pending', 'applied', or 'rejected'"
+        )
 
+    stored = "applied" if status == "done" else status
+    job_status = _JOB_STATUS_FOR_REVIEW[status]
     init_db(path)
     with _connection(path) as connection:
+        row = connection.execute(
+            "SELECT url, link FROM review_queue WHERE id = ?",
+            (item_id,),
+        ).fetchone()
+        if row is None:
+            return None
         connection.execute(
             "UPDATE review_queue SET status = ? WHERE id = ?",
-            (status, item_id),
+            (stored, item_id),
         )
-        if connection.execute(
-            "SELECT changes() AS changed"
-        ).fetchone()["changed"] == 0:
-            return None
+        urls = [value for value in (row["url"], row["link"]) if value]
+        if urls:
+            placeholders = ", ".join("?" for _ in urls)
+            connection.execute(
+                f"""
+                UPDATE jobs
+                SET apply_status = ?,
+                    updated_at = CURRENT_TIMESTAMP,
+                    applied_at = CASE
+                        WHEN ? = 'applied' THEN CURRENT_TIMESTAMP
+                        ELSE NULL
+                    END
+                WHERE url IN ({placeholders})
+                   OR apply_url IN ({placeholders})
+                """,
+                (job_status, job_status, *urls, *urls),
+            )
     items = [
         item
         for item in list_review_queue(path=path)
@@ -501,7 +535,13 @@ def summarize_jobs(*, path: str | Path | None = None) -> dict[str, Any]:
         "outcomes": outcomes,
         "apply_statuses": statuses,
         "review_pending": int(review.get("pending", 0)),
-        "review_done": int(review.get("done", 0)),
+        "review_applied": int(review.get("applied", 0) + review.get("done", 0)),
+        "review_rejected": int(review.get("rejected", 0)),
+        "review_done": int(
+            review.get("done", 0)
+            + review.get("applied", 0)
+            + review.get("rejected", 0)
+        ),
         "review_total": sum(review.values()),
     }
 

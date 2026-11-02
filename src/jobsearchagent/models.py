@@ -29,6 +29,7 @@ ApplyStatus = Literal[
     "external",
     "skipped",
     "dry_run_ready",
+    "rejected",
 ]
 
 

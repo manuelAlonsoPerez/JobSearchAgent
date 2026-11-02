@@ -25,6 +25,7 @@ const APPLY_TONE: Record<string, Tone> = {
   external: 'external',
   skipped: 'muted',
   dry_run_ready: 'review',
+  rejected: 'reject',
 }
 
 function Badge({ tone, children }: { tone: Tone; children: string }) {
@@ -41,8 +42,16 @@ export function ApplyBadge({ value }: { value: ApplyStatus | null | undefined })
   return <Badge tone={APPLY_TONE[value] ?? 'muted'}>{value.replaceAll('_', ' ')}</Badge>
 }
 
+const REVIEW_TONE: Record<ReviewStatus, Tone> = {
+  pending: 'manual',
+  applied: 'applied',
+  rejected: 'reject',
+  done: 'applied',
+}
+
 export function ReviewBadge({ value }: { value: ReviewStatus }) {
-  return <Badge tone={value === 'pending' ? 'manual' : 'applied'}>{value}</Badge>
+  const label = value === 'done' ? 'applied' : value
+  return <Badge tone={REVIEW_TONE[value] ?? 'muted'}>{label}</Badge>
 }
 
 const EMPLOYMENT_TONE: Record<string, Tone> = {

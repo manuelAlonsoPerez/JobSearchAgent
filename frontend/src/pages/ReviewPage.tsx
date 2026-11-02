@@ -12,9 +12,14 @@ type ReviewPageProps = {
 
 const FILTERS: { value: ReviewStatus | 'all'; label: string }[] = [
   { value: 'pending', label: 'Pending' },
-  { value: 'done', label: 'Done' },
+  { value: 'applied', label: 'Applied' },
+  { value: 'rejected', label: 'Rejected' },
   { value: 'all', label: 'All' },
 ]
+
+function isClosed(status: ReviewStatus): boolean {
+  return status === 'applied' || status === 'rejected' || status === 'done'
+}
 
 export function ReviewPage({ onChanged }: ReviewPageProps) {
   const [filter, setFilter] = useState<ReviewStatus | 'all'>('pending')
@@ -78,7 +83,7 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
     try {
       await setReviewStatus(item.id, status)
       await load()
-      if (filter === 'pending' && status === 'done' && selectedId === item.id) {
+      if (filter === 'pending' && isClosed(status) && selectedId === item.id) {
         setSelectedId(null)
       }
     } catch (err: unknown) {
@@ -95,7 +100,7 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
           <h1>Manual apply</h1>
           <p>
             Jobs parked in <code>review_queue</code> — finish the application on LinkedIn,
-            then mark done.
+            then mark Applied or Rejected.
           </p>
         </div>
         <div className="filters">
@@ -157,41 +162,56 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
                       <ReviewBadge value={item.status} />
                     </td>
                     <td className="muted">{formatWhen(item.created_at)}</td>
-                    <td className="actions">
-                      <a
-                        className="button small"
-                        href={item.link || item.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        Open
-                      </a>
-                      {item.status === 'pending' ? (
-                        <button
-                          type="button"
+                    <td>
+                      <div className="actions">
+                        <a
                           className="button small"
-                          disabled={busyId === item.id}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            void mark(item, 'done')
-                          }}
+                          href={item.link || item.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(event) => event.stopPropagation()}
                         >
-                          Mark done
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="ghost small"
-                          disabled={busyId === item.id}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            void mark(item, 'pending')
-                          }}
-                        >
-                          Reopen
-                        </button>
-                      )}
+                          Open
+                        </a>
+                        {item.status === 'pending' ? (
+                          <>
+                            <button
+                              type="button"
+                              className="button small"
+                              disabled={busyId === item.id}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void mark(item, 'applied')
+                              }}
+                            >
+                              Applied
+                            </button>
+                            <button
+                              type="button"
+                              className="button small reject"
+                              disabled={busyId === item.id}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void mark(item, 'rejected')
+                              }}
+                            >
+                              Rejected
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="ghost small"
+                            disabled={busyId === item.id}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              void mark(item, 'pending')
+                            }}
+                          >
+                            Reopen
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -275,14 +295,24 @@ function ReviewDetail({
           Finish on LinkedIn
         </a>
         {item.status === 'pending' ? (
-          <button
-            type="button"
-            className="button"
-            disabled={busy}
-            onClick={() => onMark('done')}
-          >
-            Mark done
-          </button>
+          <>
+            <button
+              type="button"
+              className="button"
+              disabled={busy}
+              onClick={() => onMark('applied')}
+            >
+              Applied
+            </button>
+            <button
+              type="button"
+              className="button reject"
+              disabled={busy}
+              onClick={() => onMark('rejected')}
+            >
+              Rejected
+            </button>
+          </>
         ) : (
           <button
             type="button"

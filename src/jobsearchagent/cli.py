@@ -76,6 +76,8 @@ def classify_result(state: JobState) -> str:
     status = state.get("apply_status")
     if status == "applied":
         return "applied"
+    if status == "rejected":
+        return "rejected"
     if status == "dry_run_ready":
         return "dry_run_ready"
     if status == "external":

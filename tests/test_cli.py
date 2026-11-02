@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 from jobsearchagent.cli import (
     DiscoverResult,
+    _filters_from_args,
     _search_places,
     classify_result,
     discover_jobs,
@@ -22,7 +23,11 @@ from jobsearchagent.cli import (
     run_batch,
 )
 from jobsearchagent.config import search_queries
-from jobsearchagent.discovery.linkedin import WORK_TYPE_CODES, SearchFilters
+from jobsearchagent.discovery.linkedin import (
+    POSTED_WITHIN_SECONDS,
+    WORK_TYPE_CODES,
+    SearchFilters,
+)
 from jobsearchagent.models import JobState
 
 
@@ -91,6 +96,32 @@ class ParseArgsTests(unittest.TestCase):
         args = parse_args(["run", "--query", "React", "--max-jobs", "80", "--dry-run"])
         self.assertEqual(args.max_jobs, 80)
         self.assertEqual(args.limit, 20)
+
+    def test_month_overrides_posted_within(self) -> None:
+        args = parse_args(
+            [
+                "run",
+                "--query",
+                "React",
+                "--dry-run",
+                "--limit",
+                "15",
+                "--max-jobs",
+                "80",
+                "--month",
+                "1",
+            ]
+        )
+        self.assertEqual(args.month, 1)
+        self.assertEqual(args.posted_within, "week")
+        filters = _filters_from_args(args)
+        self.assertEqual(filters.posted_within_seconds, POSTED_WITHIN_SECONDS["month"])
+
+        two_months = parse_args(["discover", "--query", "React", "--month", "2"])
+        self.assertEqual(
+            _filters_from_args(two_months).posted_within_seconds,
+            POSTED_WITHIN_SECONDS["month"] * 2,
+        )
 
     def test_omitted_query_uses_searches_yaml(self) -> None:
         args = parse_args(["run", "--dry-run"])

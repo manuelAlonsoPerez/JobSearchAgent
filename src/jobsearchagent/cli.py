@@ -23,6 +23,8 @@ from .discovery.linkedin import (
     WORK_TYPE_CODES,
     LinkedInDiscovery,
     SearchFilters,
+    parse_month_count,
+    posted_window_seconds,
 )
 from .apply.record import record
 from .graph import invoke_job
@@ -404,6 +406,16 @@ def _add_shared_flags(parser: argparse.ArgumentParser) -> None:
         help="Recency filter (f_TPR). Default: week.",
     )
     parser.add_argument(
+        "--month",
+        type=_month_arg,
+        default=None,
+        metavar="N",
+        help=(
+            "Only jobs published in the last N months. "
+            "Overrides --posted-within. 1 is LinkedIn's Past month."
+        ),
+    )
+    parser.add_argument(
         "--work-type",
         choices=[*sorted(WORK_TYPE_CODES), "any"],
         default="remote",
@@ -458,10 +470,20 @@ def _add_shared_flags(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _month_arg(value: str) -> int:
+    try:
+        return parse_month_count(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _filters_from_args(arguments: argparse.Namespace) -> SearchFilters:
     return SearchFilters(
         geo_id=arguments.geo_id,
-        posted_within_seconds=POSTED_WITHIN_SECONDS[arguments.posted_within],
+        posted_within_seconds=posted_window_seconds(
+            arguments.posted_within,
+            arguments.month,
+        ),
         work_type=(
             None
             if arguments.work_type == "any"

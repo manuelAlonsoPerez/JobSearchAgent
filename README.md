@@ -69,6 +69,9 @@ PYTHONPATH=src python -m jobsearchagent run --tier 1 --dry-run
 
 # Up to 15 new jobs per search, stop the run after 80 new jobs
 PYTHONPATH=src python -m jobsearchagent run --dry-run --limit 15 --max-jobs 80
+
+# Only jobs published in the last month
+PYTHONPATH=src python -m jobsearchagent run --dry-run --limit 15 --max-jobs 80 --month 1
 ```
 
 On the first run, complete LinkedIn login in the Chromium window when prompted, then return to
@@ -118,14 +121,16 @@ posted in the last week, sorted by relevance.
 | ---------------------------------- | ------------------------------------- | -------------------------------- |
 | `--geo-id`                         | region id, e.g. `91000007` (EMEA)     | `geoId` (replaces text location) |
 | `--posted-within`                  | `24h`, `week`\*, `month`              | `f_TPR`                          |
+| `--month`                          | integer months, e.g. `1`              | `f_TPR` (overrides posted-within)|
 | `--work-type`                      | `remote`\*, `hybrid`, `onsite`, `any` | `f_WT` (`any` removes it)        |
 | `--sort`                           | `relevance`\*, `recent`               | `sortBy`                         |
 | `--easy-apply` / `--no-easy-apply` | on\* (`linkedin_agent`)               | `f_AL`                           |
 
 `--geo-id` runs one region-scoped search instead of iterating `--location`. Triage eligibility
-still follows `JOB_LOCATIONS` / `--location`. `--limit` is per query×location; `--max-jobs` is
-the optional run total. Each `run` prints counts for discovered, duplicate, rejected, review,
-external, dry-run-ready, and applied.
+still follows `JOB_LOCATIONS` / `--location`. `--month N` keeps jobs published in the last N
+months (LinkedIn's date filter plus a skip if the listing date is older). `--limit` is per
+query×location; `--max-jobs` is the optional run total. Each `run` prints counts for
+discovered, duplicate, rejected, review, external, dry-run-ready, and applied.
 
 A job is location-eligible when it is based in a configured place (Norway), explicitly permits
 remote work from there, includes that place through a wider scope (EEA / Europe / Nordic), or is

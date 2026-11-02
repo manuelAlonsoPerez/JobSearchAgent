@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -24,7 +25,13 @@ from jobsearchagent.database import (
     upsert_job,
 )
 from jobsearchagent.config import load_work_profiles
-from jobsearchagent.discovery.linkedin import LinkedInDiscovery, SearchFilters
+from jobsearchagent.discovery.linkedin import (
+    LinkedInDiscovery,
+    SearchFilters,
+    parse_posted_at,
+    posted_too_old,
+    posted_window_seconds,
+)
 from jobsearchagent.linkedin_agent import LinkedInAgent
 from jobsearchagent.models import JobState
 from jobsearchagent.triage import select_profile, triage
@@ -239,6 +246,20 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(query["f_TPR"], ["r86400"])
         self.assertEqual(query["sortBy"], ["DD"])
 
+    def test_month_window_sets_linkedin_date_filter(self) -> None:
+        query = parse_qs(
+            urlsplit(
+                LinkedInDiscovery.build_search_url(
+                    "React",
+                    "Norway",
+                    filters=SearchFilters(
+                        posted_within_seconds=posted_window_seconds(month=1),
+                    ),
+                )
+            ).query
+        )
+        self.assertEqual(query["f_TPR"], ["r2592000"])
+
     def test_title_filters_come_from_search_configuration(self) -> None:
         discovery = LinkedInDiscovery(
             searches={"exclude_titles": ["director", "intern"]},
@@ -247,6 +268,39 @@ class DiscoveryTests(unittest.TestCase):
 
         self.assertTrue(discovery._title_is_excluded("Engineering Director"))
         self.assertFalse(discovery._title_is_excluded("Frontend Developer"))
+
+
+class PostedDateTests(unittest.TestCase):
+    def test_parse_iso_and_relative_posted_dates(self) -> None:
+        iso = parse_posted_at("2026-07-15T12:00:00.000Z")
+        self.assertIsNotNone(iso)
+        assert iso is not None
+        self.assertEqual(iso.year, 2026)
+        self.assertEqual(iso.month, 7)
+
+        now = datetime(2026, 11, 2, tzinfo=timezone.utc)
+        relative = parse_posted_at(
+            "Oslo, Norway · Posted 4 months ago · 80 applicants",
+            now=now,
+        )
+        self.assertIsNotNone(relative)
+        assert relative is not None
+        self.assertEqual(relative.month, 7)
+
+    def test_old_listings_are_outside_a_one_month_window(self) -> None:
+        now = datetime(2026, 11, 2, tzinfo=timezone.utc)
+        posted = datetime(2026, 7, 10, tzinfo=timezone.utc)
+        self.assertTrue(
+            posted_too_old(posted, posted_window_seconds(month=1), now=now)
+        )
+        self.assertFalse(
+            posted_too_old(
+                datetime(2026, 10, 20, tzinfo=timezone.utc),
+                posted_window_seconds(month=1),
+                now=now,
+            )
+        )
+        self.assertFalse(posted_too_old(None, posted_window_seconds(month=1), now=now))
 
 
 class TriageTests(unittest.TestCase):

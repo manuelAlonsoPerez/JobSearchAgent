@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -45,6 +46,119 @@ POSTED_WITHIN_SECONDS: dict[str, int] = {
     "week": 604_800,
     "month": 2_592_000,
 }
+SECONDS_PER_MONTH = POSTED_WITHIN_SECONDS["month"]
+_RELATIVE_POSTED = re.compile(
+    r"(?:posted|reposted)?\s*(\d+)\s*"
+    r"(minute|hour|day|week|month|year)s?\s+ago",
+    re.IGNORECASE,
+)
+_RELATIVE_UNITS: dict[str, int] = {
+    "minute": 60,
+    "hour": 3_600,
+    "day": 86_400,
+    "week": 604_800,
+    "month": SECONDS_PER_MONTH,
+    "year": 31_536_000,
+}
+
+
+def posted_window_seconds(
+    posted_within: str = "week",
+    month: int | None = None,
+) -> int:
+    """Seconds for LinkedIn ``f_TPR``. ``month`` overrides ``posted_within``."""
+
+    if month is not None:
+        if month < 1:
+            raise ValueError("month must be at least 1")
+        return month * SECONDS_PER_MONTH
+    if posted_within not in POSTED_WITHIN_SECONDS:
+        raise ValueError(f"Unknown posted-within window: {posted_within}")
+    return POSTED_WITHIN_SECONDS[posted_within]
+
+
+def parse_month_count(value: str) -> int:
+    """Argparse type for ``--month N``."""
+
+    try:
+        month = int(value)
+    except ValueError as exc:
+        raise ValueError("month must be an integer") from exc
+    if month < 1:
+        raise ValueError("month must be at least 1")
+    return month
+
+
+def parse_posted_at(
+    *texts: str | None,
+    now: datetime | None = None,
+) -> datetime | None:
+    """Best published date from ISO ``datePosted`` or 'N months ago' text."""
+
+    for text in texts:
+        parsed = _parse_iso_datetime(text)
+        if parsed is not None:
+            return parsed
+    combined = " ".join(item for item in texts if item)
+    return _parse_relative_posted(combined, now=now)
+
+
+def posted_too_old(
+    posted_at: datetime | None,
+    max_age_seconds: int | None,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """True when a parsed publish date is older than the search window."""
+
+    if posted_at is None or not max_age_seconds:
+        return False
+    moment = now or datetime.now(timezone.utc)
+    if posted_at.tzinfo is None:
+        posted_at = posted_at.replace(tzinfo=timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return (moment - posted_at).total_seconds() > max_age_seconds
+
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value or not str(value).strip():
+        return None
+    text = str(value).strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _parse_relative_posted(
+    text: str,
+    *,
+    now: datetime | None = None,
+) -> datetime | None:
+    match = _RELATIVE_POSTED.search(text)
+    if match is None:
+        return None
+    amount = int(match.group(1))
+    unit = match.group(2).casefold()
+    seconds = _RELATIVE_UNITS.get(unit)
+    if seconds is None:
+        return None
+    moment = now or datetime.now(timezone.utc)
+    return moment - timedelta(seconds=amount * seconds)
+
+
+class StaleListing(Exception):
+    """The job's published date is outside the requested search window."""
+
+    def __init__(self, title: str) -> None:
+        super().__init__(title)
+        self.title = title
 WORK_TYPE_CODES: dict[str, str] = {
     "onsite": "1",
     "remote": "2",
@@ -103,6 +217,7 @@ class LinkedInDiscovery:
             raise ValueError("limit must be at least 1")
 
         self._raise_for_security_challenge(page)
+        search = filters or SearchFilters()
         candidates: list[str] = []
         candidate_seen: set[str] = set()
         for page_index in range(self.page_limit):
@@ -110,7 +225,7 @@ class LinkedInDiscovery:
                 query,
                 location,
                 start=page_index * 25,
-                filters=filters,
+                filters=search,
             )
             self.output(f"Searching LinkedIn: {search_url}")
             self._navigate(page, search_url)
@@ -130,7 +245,14 @@ class LinkedInDiscovery:
                     stats["duplicate"] = int(stats.get("duplicate") or 0) + 1
                 continue
             try:
-                state = self._scrape_job(page, url)
+                state = self._scrape_job(
+                    page,
+                    url,
+                    max_age_seconds=search.posted_within_seconds,
+                )
+            except StaleListing as exc:
+                self.output(f"  Skipped (older than date filter): {exc.title}")
+                continue
             except (PlaywrightError, RuntimeError) as exc:
                 self.output(f"Could not read {url}: {exc}")
                 continue
@@ -314,7 +436,13 @@ class LinkedInDiscovery:
             page.wait_for_timeout(800)
         return list(collected.values())[:limit]
 
-    def _scrape_job(self, page: Page, url: str) -> JobState:
+    def _scrape_job(
+        self,
+        page: Page,
+        url: str,
+        *,
+        max_age_seconds: int | None = None,
+    ) -> JobState:
         self._navigate(page, url)
         self._raise_for_security_challenge(page)
         try:
@@ -331,6 +459,8 @@ class LinkedInDiscovery:
         description = fields["description"]
         if not title or not description:
             raise RuntimeError("LinkedIn job title or description was not available")
+        if posted_too_old(fields.get("posted_at"), max_age_seconds):
+            raise StaleListing(title or url)
 
         easy_apply, apply_url = self._application_details(page)
         canonical_url = canonicalize_url(url)
@@ -379,7 +509,7 @@ class LinkedInDiscovery:
                 return
 
     @classmethod
-    def _listing_fields(cls, page: Page) -> dict[str, str]:
+    def _listing_fields(cls, page: Page) -> dict[str, Any]:
         """Read title, company, location, contract, and description from a job page."""
 
         snapshot = cls._page_listing_snapshot(page)
@@ -419,6 +549,8 @@ class LinkedInDiscovery:
                 ".jobs-box__html-content",
             ),
         ) or cls._new_layout_description(page)
+        json_ld = snapshot.get("jsonLd") or {}
+        insights = "\n".join(snapshot.get("insights") or [])
         recovered = enrich_job_metadata(
             {
                 "title": title,
@@ -428,13 +560,19 @@ class LinkedInDiscovery:
                 "document_title": snapshot.get("documentTitle") or page.title(),
                 "company_from_page": snapshot.get("companyFromLink"),
                 "location_from_page": location,
-                "employment_hint": "\n".join(snapshot.get("insights") or []),
-                "json_ld": snapshot.get("jsonLd") or {},
+                "employment_hint": insights,
+                "json_ld": json_ld,
             }
+        )
+        posted_at = parse_posted_at(
+            json_ld.get("datePosted") if isinstance(json_ld, dict) else None,
+            location,
+            insights,
         )
         return {
             **recovered,
             "description": clean_job_text(description) or description,
+            "posted_at": posted_at,
         }
 
     @staticmethod
@@ -507,7 +645,8 @@ class LinkedInDiscovery:
                       company: (posting.hiringOrganization
                         && posting.hiringOrganization.name) || "",
                       location: locationParts.filter(Boolean).join(", "),
-                      employmentType: posting.employmentType || ""
+                      employmentType: posting.employmentType || "",
+                      datePosted: posting.datePosted || ""
                     } : null
                   };
                 }

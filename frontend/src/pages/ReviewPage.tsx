@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchJob, fetchReviewQueue, setReviewStatus } from '../api'
+import { ConfirmModal } from '../components/ConfirmModal'
 import { Pagination } from '../components/Pagination'
 import { ApplyBadge, EmploymentBadge, OutcomeBadge, ReviewBadge } from '../components/StatusBadge'
 import { formatWhen, label } from '../format'
 import { PAGE_SIZE, paginate } from '../pagination'
 import type { Job, ReviewItem, ReviewStatus } from '../types'
+
+type PendingMark = {
+  item: ReviewItem
+  status: Exclude<ReviewStatus, 'done'>
+}
 
 type ReviewPageProps = {
   onChanged: () => void
@@ -21,6 +27,33 @@ function isClosed(status: ReviewStatus): boolean {
   return status === 'applied' || status === 'rejected' || status === 'done'
 }
 
+function confirmCopy(item: ReviewItem, status: PendingMark['status']) {
+  const role = label(item.title, 'this job')
+  const company = label(item.company, 'Unknown company')
+  if (status === 'applied') {
+    return {
+      title: 'Mark as applied?',
+      body: `This will record ${role} at ${company} as applied in the review queue and the job record.`,
+      confirmLabel: 'Applied',
+      confirmClassName: 'button',
+    }
+  }
+  if (status === 'rejected') {
+    return {
+      title: 'Reject this job?',
+      body: `This will record ${role} at ${company} as rejected and remove it from the pending queue.`,
+      confirmLabel: 'Rejected',
+      confirmClassName: 'button reject',
+    }
+  }
+  return {
+    title: 'Reopen this job?',
+    body: `This will move ${role} at ${company} back to pending for manual apply.`,
+    confirmLabel: 'Reopen',
+    confirmClassName: 'button',
+  }
+}
+
 export function ReviewPage({ onChanged }: ReviewPageProps) {
   const [filter, setFilter] = useState<ReviewStatus | 'all'>('pending')
   const [items, setItems] = useState<ReviewItem[]>([])
@@ -29,6 +62,7 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [pending, setPending] = useState<PendingMark | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE)
 
@@ -78,10 +112,15 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
     }
   }, [selected])
 
+  const askMark = (item: ReviewItem, status: PendingMark['status']) => {
+    setPending({ item, status })
+  }
+
   const mark = async (item: ReviewItem, status: ReviewStatus) => {
     setBusyId(item.id)
     try {
       await setReviewStatus(item.id, status)
+      setPending(null)
       await load()
       if (filter === 'pending' && isClosed(status) && selectedId === item.id) {
         setSelectedId(null)
@@ -181,7 +220,7 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
                               disabled={busyId === item.id}
                               onClick={(event) => {
                                 event.stopPropagation()
-                                void mark(item, 'applied')
+                                askMark(item, 'applied')
                               }}
                             >
                               Applied
@@ -192,7 +231,7 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
                               disabled={busyId === item.id}
                               onClick={(event) => {
                                 event.stopPropagation()
-                                void mark(item, 'rejected')
+                                askMark(item, 'rejected')
                               }}
                             >
                               Rejected
@@ -205,7 +244,7 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
                             disabled={busyId === item.id}
                             onClick={(event) => {
                               event.stopPropagation()
-                              void mark(item, 'pending')
+                              askMark(item, 'pending')
                             }}
                           >
                             Reopen
@@ -238,10 +277,20 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
             job={detail}
             busy={busyId === selected.id}
             onClose={() => setSelectedId(null)}
-            onMark={(status) => void mark(selected, status)}
+            onMark={(status) => askMark(selected, status)}
           />
         ) : null}
       </div>
+      {pending ? (
+        <ConfirmModal
+          {...confirmCopy(pending.item, pending.status)}
+          busy={busyId === pending.item.id}
+          onCancel={() => {
+            if (busyId === null) setPending(null)
+          }}
+          onConfirm={() => void mark(pending.item, pending.status)}
+        />
+      ) : null}
     </section>
   )
 }
@@ -257,7 +306,7 @@ function ReviewDetail({
   job: Job | null
   busy: boolean
   onClose: () => void
-  onMark: (status: ReviewStatus) => void
+  onMark: (status: PendingMark['status']) => void
 }) {
   const href = item.link || item.url
   return (

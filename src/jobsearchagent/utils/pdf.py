@@ -99,16 +99,12 @@ def render_html_pdf(html: str, output_path: str | Path) -> Path:
         try:
             page = browser.new_page()
             page.set_content(html, wait_until="load")
+            # Honour CSS @page size/margins (needed so later CV pages keep
+            # top/bottom space). Playwright's margin=0 would override them.
             page.pdf(
                 path=str(destination),
-                format="A4",
                 print_background=True,
-                margin={
-                    "top": "0",
-                    "right": "0",
-                    "bottom": "0",
-                    "left": "0",
-                },
+                prefer_css_page_size=True,
             )
         finally:
             browser.close()

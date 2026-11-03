@@ -78,6 +78,7 @@ def sanitize_cv_fields(
     corpus, allow, skill_vocab = _grounding(source, baseline)
     cleaned = fields.model_copy(deep=True)
     cleaned.name = baseline.name
+    cleaned.headline = baseline.headline
     cleaned.contact = baseline.contact.model_copy()
     cleaned.education = [item.model_copy() for item in baseline.education]
     if not cleaned.languages:

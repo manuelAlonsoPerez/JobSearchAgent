@@ -17,7 +17,6 @@ from jobsearchagent.preparation.fields import (
 from jobsearchagent.preparation.render import render_cv_html, render_cv_pdf
 from jobsearchagent.preparation.rewrite import (
     finish_tailored_cv,
-    headline_from_offer,
     restore_source_length,
     rewrite_cv,
 )
@@ -96,18 +95,14 @@ class TemplateTests(unittest.TestCase):
 
         self.assertIn("MANUEL ALONSO", html)
         self.assertIn("SERVICENOW DEVELOPER", html)
-        self.assertIn('class="title-bar"', html)
-        self.assertNotIn('class="title-bar title-bar-long"', html)
-        long_title = fields.model_copy(deep=True)
-        long_title.headline = "Senior Full Stack Engineer (React/Node)"
-        long_html = render_cv_html("servicenow", long_title)
-        self.assertIn('class="title-bar title-bar-long"', long_html)
-        self.assertIn("SENIOR FULL STACK ENGINEER (REACT/NODE)", long_html)
         self.assertIn("Contact", html)
         self.assertIn("Work Experience", html)
         self.assertIn("Sopra Steria Norway", html)
         self.assertIn("Flow Designer", html)
         self.assertNotIn("<script>", html)
+        self.assertIn("@page :first", html)
+        self.assertIn("margin: 10mm 0 12mm 0", html)
+        self.assertIn("box-decoration-break: clone", html)
 
     def test_render_pdf_writes_nonempty_file(self) -> None:
         fields = baseline_fields("fullstack")
@@ -249,7 +244,7 @@ class RewriteTests(unittest.TestCase):
             len(baseline.experience[0].bullets),
         )
 
-    def test_finish_uses_offer_title_keeps_job_order_and_adds_skills(self) -> None:
+    def test_finish_keeps_source_title_job_order_and_adds_skills(self) -> None:
         source = resolve_source_cv("fullstack-developer")
         baseline = initial_fields(source)
         shuffled = baseline.model_copy(deep=True)
@@ -267,7 +262,7 @@ class RewriteTests(unittest.TestCase):
             shuffled, source=source, baseline=baseline, job=job
         )
 
-        self.assertEqual(finished.headline, "Frontier Engineer")
+        self.assertEqual(finished.headline, baseline.headline)
         self.assertEqual(
             [role.organization for role in finished.experience],
             [role.organization for role in baseline.experience],
@@ -282,13 +277,6 @@ class RewriteTests(unittest.TestCase):
         self.assertLessEqual(len(extras), 7)
         self.assertNotIn("Invented Quantum Mesh", finished.skills)
         self.assertIn("React", extras)
-
-    def test_headline_from_offer_normalizes_and_falls_back(self) -> None:
-        self.assertEqual(
-            headline_from_offer({"title": "  Frontier   Engineer  "}, "Fallback"),
-            "Frontier Engineer",
-        )
-        self.assertEqual(headline_from_offer({"title": ""}, "Fallback"), "Fallback")
 
     def test_extra_grounded_skills_cap_at_seven(self) -> None:
         source = resolve_source_cv("fullstack-developer")

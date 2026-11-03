@@ -128,7 +128,6 @@ Allowed facts (do not invent outside this):
 {_compact_facts(source)}
 
 You may:
-- set headline to the offered job title
 - rewrite the summary toward the offer, keeping the same number of paragraphs and about the same word count
 - rephrase bullets to emphasise the offer, keeping the same number of bullets per job and the same sentence length and style
 - keep every job in the current chronological order (do not reorder)
@@ -155,8 +154,7 @@ You may not:
             "content": (
                 "You rewrite CVs. Use only facts from the current CV JSON and "
                 "allowed facts. Keep the profile and each job's bullets as long as "
-                "the current CV. Keep jobs in chronological order. "
-                "Set headline to the offered job title. Do not invent facts."
+                "the current CV. Keep jobs in chronological order. Do not invent facts."
             ),
         },
         {"role": "user", "content": user},
@@ -208,17 +206,12 @@ def finish_tailored_cv(
     baseline: CvFields,
     job: Mapping[str, Any],
 ) -> CvFields:
-    """Apply offer headline, extra skills, and source job order/length."""
+    """Apply extra skills and source job order/length. Keep the source headline."""
 
     finished = restore_source_length(fields, baseline)
-    finished.headline = headline_from_offer(job, baseline.headline)
+    finished.headline = baseline.headline
     finished.skills = _with_extra_skills(finished, source, baseline, job)
     return finished
-
-
-def headline_from_offer(job: Mapping[str, Any], fallback: str) -> str:
-    title = re.sub(r"\s+", " ", str(job.get("title") or "")).strip()
-    return title[:80] or fallback
 
 
 def restore_source_length(fields: CvFields, baseline: CvFields) -> CvFields:
@@ -350,6 +343,7 @@ def _parse_fields(raw: str, baseline: CvFields) -> CvFields:
     data = _normalize_payload(data)
     fields = CvFields.model_validate(data)
     fields.name = baseline.name or fields.name
+    fields.headline = baseline.headline
     fields.contact = baseline.contact.model_copy()
     fields.education = [item.model_copy() for item in baseline.education]
     if not fields.languages:

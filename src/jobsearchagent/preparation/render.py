@@ -48,9 +48,6 @@ def render_cv_html(template_id: TemplateId, fields: CvFields) -> str:
     css = _CSS.read_text(encoding="utf-8")
     photo = _portrait_data_uri()
     headline = escape(fields.headline.upper())
-    title_bar_class = "title-bar"
-    if len(fields.headline) > 24:
-        title_bar_class += " title-bar-long"
     summary = "".join(
         f"<p>{escape(paragraph)}</p>"
         for paragraph in fields.summary.split("\n\n")
@@ -68,7 +65,7 @@ def render_cv_html(template_id: TemplateId, fields: CvFields) -> str:
     <div class="hero-left"></div>
     <div class="hero-right"><h1>{escape(fields.name.upper())}</h1></div>
     <div class="photo"><img src="{photo}" alt=""></div>
-    <div class="{title_bar_class}">{headline}</div>
+    <div class="title-bar">{headline}</div>
   </div>
   <div class="page">
     <aside class="sidebar">

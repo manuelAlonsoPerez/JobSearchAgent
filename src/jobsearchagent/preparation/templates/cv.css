@@ -1,6 +1,10 @@
 @page {
   size: A4;
-  margin: 0;
+  margin: 10mm 0 12mm 0;
+}
+
+@page :first {
+  margin: 0 0 12mm 0;
 }
 
 * {
@@ -84,17 +88,10 @@ body::before {
   display: flex;
   align-items: center;
   padding-left: 80mm;
-  padding-right: 10mm;
   font-family: Lato, "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 9.6pt;
   letter-spacing: 0.38em;
-  line-height: 1.15;
   text-transform: uppercase;
-}
-
-.title-bar-long {
-  letter-spacing: 0.1em;
-  font-size: 8pt;
 }
 
 .photo {
@@ -117,7 +114,9 @@ body::before {
 }
 
 .main {
-  padding: 8mm 14mm 12mm 12mm;
+  padding: 8mm 14mm 8mm 12mm;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .side-heading,
@@ -188,8 +187,17 @@ body::before {
 
 .job {
   break-inside: avoid;
+  break-after: auto;
   margin: 0 0 5mm;
-  padding-left: 4mm;
+  padding: 2mm 0 2mm 4mm;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.job-head,
+.job-title {
+  break-after: avoid;
+  break-inside: avoid;
 }
 
 .timeline {

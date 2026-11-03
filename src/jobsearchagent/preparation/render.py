@@ -10,6 +10,29 @@ from ..utils.pdf import render_html_pdf
 from .fields import CvFields
 from .source import TemplateId
 
+Locale = str
+
+_LABELS = {
+    "en": {
+        "html_lang": "en",
+        "contact": "Contact",
+        "skills": "Skills",
+        "languages": "Languages",
+        "education": "Education",
+        "profile": "Profile",
+        "experience": "Work Experience",
+    },
+    "es": {
+        "html_lang": "es",
+        "contact": "Contacto",
+        "skills": "Competencias",
+        "languages": "Idiomas",
+        "education": "Formación",
+        "profile": "Perfil",
+        "experience": "Experiencia laboral",
+    },
+}
+
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 _PORTRAIT = TEMPLATES_DIR / "portrait.png"
 _CSS = TEMPLATES_DIR / "cv.css"
@@ -42,9 +65,15 @@ _ICON_PIN = (
 )
 
 
-def render_cv_html(template_id: TemplateId, fields: CvFields) -> str:
+def render_cv_html(
+    template_id: TemplateId,
+    fields: CvFields,
+    *,
+    locale: Locale = "en",
+) -> str:
     """Fill the Canva-style HTML template with structured fields only."""
 
+    labels = _LABELS.get(locale) or _LABELS["en"]
     css = _CSS.read_text(encoding="utf-8")
     photo = _portrait_data_uri()
     headline = escape(fields.headline.upper())
@@ -54,7 +83,7 @@ def render_cv_html(template_id: TemplateId, fields: CvFields) -> str:
         if paragraph.strip()
     )
     return f"""<!doctype html>
-<html lang="en">
+<html lang="{escape(labels["html_lang"])}">
 <head>
   <meta charset="utf-8">
   <title>{escape(fields.name)} — {escape(fields.headline)}</title>
@@ -69,15 +98,15 @@ def render_cv_html(template_id: TemplateId, fields: CvFields) -> str:
   </div>
   <div class="page">
     <aside class="sidebar">
-      {_contact_html(fields)}
-      {_list_section("Skills", fields.skills)}
-      {_list_section("Languages", fields.languages)}
-      {_education_html(fields)}
+      {_contact_html(fields, labels["contact"])}
+      {_list_section(labels["skills"], fields.skills)}
+      {_list_section(labels["languages"], fields.languages)}
+      {_education_html(fields, labels["education"])}
     </aside>
     <main class="main">
-      <h2>Profile</h2>
+      <h2>{escape(labels["profile"])}</h2>
       <div class="summary">{summary}</div>
-      <h2>Work Experience</h2>
+      <h2>{escape(labels["experience"])}</h2>
       <div class="timeline">
         {''.join(_job_html(job) for job in fields.experience)}
       </div>
@@ -92,10 +121,14 @@ def render_cv_pdf(
     template_id: TemplateId,
     fields: CvFields,
     output_path: str | Path,
+    *,
+    locale: Locale = "en",
 ) -> Path:
     """Render structured CV fields to an A4 PDF."""
 
-    return render_html_pdf(render_cv_html(template_id, fields), output_path)
+    return render_html_pdf(
+        render_cv_html(template_id, fields, locale=locale), output_path
+    )
 
 
 def _portrait_data_uri() -> str:
@@ -103,7 +136,7 @@ def _portrait_data_uri() -> str:
     return f"data:image/png;base64,{payload}"
 
 
-def _contact_html(fields: CvFields) -> str:
+def _contact_html(fields: CvFields, heading: str = "Contact") -> str:
     contact = fields.contact
     linkedin = escape(contact.linkedin_label or "Linkedin")
     if contact.linkedin_url:
@@ -124,7 +157,7 @@ def _contact_html(fields: CvFields) -> str:
         for icon, text in rows
         if text
     )
-    return f'<h2 class="side-heading">Contact</h2>{body}'
+    return f'<h2 class="side-heading">{escape(heading)}</h2>{body}'
 
 
 def _list_section(title: str, items: list[str]) -> str:
@@ -134,7 +167,7 @@ def _list_section(title: str, items: list[str]) -> str:
     return f'<h2 class="side-heading">{escape(title)}</h2><ul>{bullets}</ul>'
 
 
-def _education_html(fields: CvFields) -> str:
+def _education_html(fields: CvFields, heading: str = "Education") -> str:
     if not fields.education:
         return ""
     blocks: list[str] = []
@@ -148,7 +181,7 @@ def _education_html(fields: CvFields) -> str:
             "</div>"
         )
     return (
-        '<div class="education"><h2 class="side-heading">Education</h2>'
+        f'<div class="education"><h2 class="side-heading">{escape(heading)}</h2>'
         + "".join(blocks)
         + "</div>"
     )

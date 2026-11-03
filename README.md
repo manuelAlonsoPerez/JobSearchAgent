@@ -36,8 +36,10 @@ cp .env.example .env
 Activate `.venv` again whenever you open a new terminal for this project.
 
 `.env` is Git-ignored. It controls models, the SQLite path, the Chromium profile path, rate
-limits, and `JOB_LOCATIONS`. Defaults create `~/.jobsearchagent/jobsearch.db` and
-`~/.jobsearchagent/chrome-profile` on first run. Keep `DRY_RUN=true` while developing.
+limits, `JOB_LOCATIONS`, and `TAILORED_CV_DIR` (default `/Users/macnolo/Desktop/Trabajo`).
+Defaults create `~/.jobsearchagent/jobsearch.db` and `~/.jobsearchagent/chrome-profile` on first
+run. Keep `DRY_RUN=true` while developing. The tailored-CV writer uses `WRITER_MODEL` (default
+`qwen2.5:7b`), `WRITER_TIMEOUT_SECONDS=900`, and `WRITER_NUM_CTX=8192`.
 
 In a separate terminal:
 
@@ -107,8 +109,11 @@ npm install
 npm run dev
 ```
 
+`npm run dev` must run from `frontend/` (the repo root has no `dev` script).
+
 - **Analyzed jobs** (`#jobs`) — `jobs` table.
-- **Manual apply** (`#review`) — `review_queue`: open the LinkedIn link, then mark the row done.
+- **Manual apply** (`#review`) — `review_queue`: open the LinkedIn link, then mark the row
+  Applied or Rejected (or Reopen). Queue rows store `profile_id` when the matching job has one.
 
 After `npm run build`, `serve` can also host `frontend/dist` at `http://127.0.0.1:8765`.
 
@@ -147,11 +152,15 @@ LinkedIn search (one query, or every query in searches.yaml)
   → JEV: location eligibility + skills outcome
   → Easy Apply fill → close without Submit → Save → review_queue
   → or record reject / external / failed
+
+Standalone (not on `run`): python -m jobsearchagent.tailor_cv
+  → pending review_queue jobs, or one --profile + --url
+  → Ollama rewrite + fact-check → PDF in TAILORED_CV_DIR
 ```
 
 ### Configuration and shared state
 
-- `.env`-driven models, browser, database, rate limits, and `JOB_LOCATIONS`.
+- `.env`-driven models, browser, database, rate limits, `JOB_LOCATIONS`, and `TAILORED_CV_DIR`.
 - YAML for LinkedIn search URLs (`sites.yaml`), queries (`searches.yaml`), and work profiles.
 - Typed `JobState`, form, field-answer, and artifact models.
 - `JOB_LOCATIONS` drives both LinkedIn search locations and JEV location eligibility.
@@ -191,8 +200,9 @@ jobs, skips rejected and external jobs, and does not call a model for that fixed
 External, reject, and `needs_confirmation` skip the form. `invoke_job(seed)` uses `SqliteSaver`
 (`thread_id = linkedin:{source_job_id}`) so a stopped thread can resume.
 
-CV and cover-letter writers (A4) and the validator (A5) are omitted. The form uploads the
-existing profile PDF from `src/docs`.
+The apply form uploads the existing profile PDF from `src/docs`. A standalone tailored-CV
+agent can rewrite that source toward an offer (see [Tailored CVs](#tailored-cvs)). Cover
+letters and JEV-scoring of artifacts are not implemented. The writer is not wired into `run`.
 
 Routing:
 
@@ -206,7 +216,9 @@ Routing:
 
 SQLite stores normalized jobs, JEV answers, routing status, and application links. Stable
 LinkedIn IDs deduplicate URL variants. `review_queue` holds uncertain, external, failed, and
-parked-for-manual jobs without blocking later jobs.
+parked-for-manual jobs without blocking later jobs. Each review row has `url`, `reason`,
+`link`, `status` (`pending` / `applied` / `rejected`), and `profile_id` (copied from `jobs`
+when the URLs match).
 
 ## Other commands
 
@@ -246,6 +258,42 @@ PYTHONPATH=src python -m jobsearchagent.triage.smoke_requirements \
 Add `--browser` to walk the live Easy Apply form instead of the stored policy.
 `--force-accepted-easy-apply` tests the accepted branch without changing the stored outcome.
 
+## Tailored CVs
+
+Standalone module. Does not open Easy Apply and does not Submit. Source PDFs live in
+`src/docs` and are chosen from each profile’s `source_cvs`:
+
+| Profile                 | Source PDF                                      |
+| ----------------------- | ----------------------------------------------- |
+| `servicenow-developer`  | `Manuel Alonso - Developer ServiceNow.pdf`      |
+| `fullstack-developer`   | `Manuel Alonso - Developer Full stack.pdf`      |
+| `frontend-developer`    | full-stack PDF (same layout, frontend headline) |
+| `ai-developer`          | `Manuel Alonso - Developer AI.pdf`              |
+
+One offer:
+
+```bash
+PYTHONPATH=src python -m jobsearchagent.tailor_cv \
+  --profile fullstack-developer \
+  --url https://www.linkedin.com/jobs/view/4468019259/
+```
+
+Every pending `review_queue` job that has a `profile_id` (uses the stored job description
+when the URL matches; scrapes LinkedIn only if that text is missing):
+
+```bash
+PYTHONPATH=src python -m jobsearchagent.tailor_cv
+```
+
+Output: `{job-id} - {company} - {job-title}.pdf` under `TAILORED_CV_DIR`
+(`/Users/macnolo/Desktop/Trabajo` by default). Override with `--output-dir`. The rewrite
+keeps source job order and summary length, adds at most seven extra grounded skills, and
+keeps the source headline. Facts must already be in the source CV or `work_profiles.yaml`.
+`not_claimed` tools (for example embeddings or ITOM) are dropped. Each job can take several
+minutes on CPU.
+
+Pass both `--profile` and `--url`, or neither. One flag alone is an error.
+
 ## Connect to the SQLite database
 
 There is no database server. The default path is in `.env`:
@@ -276,7 +324,7 @@ SELECT title, company, location, apply_status, url
 FROM jobs
 WHERE outcome = 'accept';
 
-SELECT created_at, reason, link
+SELECT created_at, profile_id, status, reason, link
 FROM review_queue
 WHERE status = 'pending'
 ORDER BY created_at DESC;
@@ -306,10 +354,7 @@ PYTHONPATH=src python scripts/delete_jobs.py --db-path /path/to/jobsearch.db
 
 ## Not implemented yet
 
-- Generate a tailored CV and cover letter (A4 GEN) and JEV-score them (A5).
+- Cover letters and JEV-scoring of generated artifacts (A5).
+- Wiring `tailor_cv` into `run` / Easy Apply upload.
 
-See `src/docs/v1_build_guide.md` for remaining implementation phases.
-
-PYTHONPATH=src python -m jobsearchagent.tailor_cv \
- --profile fullstack-developer \
- --url https://www.linkedin.com/jobs/view/4468019259/
+See `src/docs/v1_build_guide.md` and `src/docs/tailored_cv_guide.md` for remaining phases.

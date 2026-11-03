@@ -83,6 +83,7 @@ def init_db(path: str | Path | None = None) -> None:
                 reason TEXT NOT NULL,
                 link TEXT,
                 status TEXT NOT NULL DEFAULT 'pending',
+                profile_id TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             """
@@ -110,6 +111,29 @@ def init_db(path: str | Path | None = None) -> None:
             connection.execute(
                 "ALTER TABLE jobs ADD COLUMN skills_outcome TEXT"
             )
+        review_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(review_queue)")
+        }
+        if "profile_id" not in review_columns:
+            connection.execute(
+                "ALTER TABLE review_queue ADD COLUMN profile_id TEXT"
+            )
+        connection.execute(
+            """
+            UPDATE review_queue
+            SET profile_id = (
+                SELECT jobs.profile_id
+                FROM jobs
+                WHERE jobs.url = review_queue.url
+                  AND jobs.profile_id IS NOT NULL
+                  AND jobs.profile_id <> ''
+                LIMIT 1
+            )
+            WHERE profile_id IS NULL
+               OR profile_id = ''
+            """
+        )
 
 
 def seen(
@@ -294,19 +318,36 @@ def add_to_review(
     url: str,
     reason: str,
     link: str | None = None,
+    profile_id: str | None = None,
     *,
     path: str | Path | None = None,
 ) -> None:
     """Append a non-blocking review item."""
 
     init_db(path)
+    canonical = canonicalize_url(url)
+    stored_profile = str(profile_id or "").strip() or None
     with _connection(path) as connection:
+        if stored_profile is None:
+            row = connection.execute(
+                """
+                SELECT profile_id
+                FROM jobs
+                WHERE url = ?
+                  AND profile_id IS NOT NULL
+                  AND profile_id <> ''
+                LIMIT 1
+                """,
+                (canonical,),
+            ).fetchone()
+            if row is not None:
+                stored_profile = str(row["profile_id"])
         connection.execute(
             """
-            INSERT INTO review_queue(url, reason, link)
-            VALUES (?, ?, ?)
+            INSERT INTO review_queue(url, reason, link, profile_id)
+            VALUES (?, ?, ?, ?)
             """,
-            (canonicalize_url(url), reason, link),
+            (canonical, reason, link, stored_profile),
         )
 
 
@@ -419,6 +460,7 @@ def list_review_queue(
             rq.link AS link,
             rq.status AS status,
             rq.created_at AS created_at,
+            COALESCE(rq.profile_id, j.profile_id) AS profile_id,
             j.dedup_key AS dedup_key,
             j.source_job_id AS source_job_id,
             j.title AS title,
@@ -428,7 +470,6 @@ def list_review_queue(
             j.fit_score AS fit_score,
             j.apply_status AS apply_status,
             j.easy_apply AS easy_apply,
-            j.profile_id AS profile_id,
             j.employment_type AS employment_type
         FROM review_queue AS rq
         LEFT JOIN jobs AS j ON j.url = rq.url

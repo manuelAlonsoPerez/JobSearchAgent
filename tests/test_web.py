@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 from jobsearchagent.database import (
     add_to_review,
     get_job_detail,
+    init_db,
     list_jobs,
     list_review_queue,
     set_review_status,
@@ -37,6 +38,7 @@ def _job(**overrides: object) -> JobState:
         "outcome": "accept",
         "fit_score": 1.4,
         "apply_status": "manual",
+        "profile_id": "servicenow-developer",
         "review_reason": "Easy Apply filled and closed without Submit; saved for manual apply.",
     }
     state.update(overrides)  # type: ignore[typeddict-item]
@@ -191,6 +193,7 @@ class DatabaseUiTests(unittest.TestCase):
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0]["title"], "ServiceNow Developer")
         self.assertEqual(pending[0]["company"], "Example")
+        self.assertEqual(pending[0]["profile_id"], "servicenow-developer")
         self.assertIn("saved for manual apply", pending[0]["reason"])
 
         updated = set_review_status(pending[0]["id"], "applied", path=self.path)
@@ -237,6 +240,90 @@ class DatabaseUiTests(unittest.TestCase):
         job = get_job_detail("111", path=self.path)
         assert job is not None
         self.assertEqual(job["apply_status"], "manual")
+
+    def test_review_queue_migrates_profile_id_from_matching_job_url(self) -> None:
+        path = Path(self.directory.name) / "legacy-review.db"
+        connection = sqlite3.connect(path)
+        connection.executescript(
+            """
+            CREATE TABLE jobs (
+                dedup_key TEXT PRIMARY KEY,
+                site TEXT NOT NULL,
+                source_job_id TEXT,
+                url TEXT NOT NULL,
+                title TEXT,
+                company TEXT,
+                location TEXT,
+                raw_description TEXT,
+                easy_apply INTEGER NOT NULL DEFAULT 0,
+                apply_url TEXT,
+                profile_id TEXT,
+                outcome TEXT,
+                fit_score REAL,
+                review_reason TEXT,
+                apply_status TEXT,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                applied_at TEXT
+            );
+            CREATE TABLE review_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                link TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO jobs (dedup_key, site, source_job_id, url, profile_id)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-333",
+                "LinkedIn Jobs",
+                "333",
+                "https://www.linkedin.com/jobs/view/333/",
+                "fullstack-developer",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO review_queue (url, reason, link)
+            VALUES (?, ?, ?)
+            """,
+            (
+                "https://www.linkedin.com/jobs/view/333/",
+                "Saved for manual apply.",
+                "https://www.linkedin.com/jobs/view/333/",
+            ),
+        )
+        connection.commit()
+        connection.close()
+
+        init_db(path)
+        columns = {
+            row[1]
+            for row in sqlite3.connect(path).execute(
+                "PRAGMA table_info(review_queue)"
+            )
+        }
+        self.assertIn("profile_id", columns)
+
+        stored = sqlite3.connect(path).execute(
+            "SELECT profile_id FROM review_queue WHERE url = ?",
+            ("https://www.linkedin.com/jobs/view/333/",),
+        ).fetchone()
+        self.assertIsNotNone(stored)
+        assert stored is not None
+        self.assertEqual(stored[0], "fullstack-developer")
+
+        items = list_review_queue(path=path, status="pending")
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["profile_id"], "fullstack-developer")
 
     def test_done_alias_stores_applied(self) -> None:
         pending = list_review_queue(path=self.path, status="pending")

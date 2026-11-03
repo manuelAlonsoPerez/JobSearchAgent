@@ -147,6 +147,7 @@ class LinkedInAgent:
                         str(failed["url"]),
                         str(failed["review_reason"]),
                         str(failed.get("apply_url") or failed["url"]),
+                        failed.get("profile_id"),
                     )
                     self.output(f"Triage failed; queued for review: {exc}")
                     results.append(failed)
@@ -227,6 +228,7 @@ class LinkedInAgent:
                 str(state["url"]),
                 reason,
                 str(state.get("apply_url") or state["url"]),
+                state.get("profile_id"),
             )
             return
         if outcome == "needs_confirmation":
@@ -237,6 +239,7 @@ class LinkedInAgent:
                 str(state["url"]),
                 reason,
                 str(state.get("apply_url") or state["url"]),
+                state.get("profile_id"),
             )
             return
         state["apply_status"] = "dry_run_ready"

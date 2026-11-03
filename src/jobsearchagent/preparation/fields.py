@@ -112,6 +112,8 @@ def baseline_fields(template_id: TemplateId) -> CvFields:
 
     if template_id == "servicenow":
         return _SERVICENOW
+    if template_id == "ai":
+        return _AI
     return _FULLSTACK
 
 
@@ -390,6 +392,105 @@ _FULLSTACK = CvFields(
             organization="Diggit Norge",
             title="Frontend developer",
             period="2018",
+            bullets=[
+                "Build an e-learning platform, where I collaborated interdisciplinary with the product and design teams.",
+                "Front End development with React and Redux as the main technologies used.",
+                "Integrating with the .NET REST API.",
+            ],
+        ),
+    ],
+)
+
+_AI = CvFields(
+    name="Manuel Alonso",
+    headline="AI Developer",
+    summary=(
+        "Applied AI developer with 8+ years of software development experience and one year "
+        "shipping a production RAG platform. Hands-on with an orchestrator and CrewAI agents, "
+        "LLM APIs, Python services, and React interfaces, including an earlier conversation "
+        "application using ChatGPT and Google Speech Recognition.\n\n"
+        "Focused on delivering end-to-end applied AI solutions — from document analysis and "
+        "agent workflows to user-facing tools and cloud deployments. Self-directed and "
+        "collaborative, with a track record of turning complex business requirements into "
+        "maintainable production systems."
+    ),
+    skills=[
+        "RAG platforms, CrewAI agents and LLM APIs",
+        "Python, FastAPI and REST integrations",
+        "React, TypeScript and frontend interfaces",
+        "Docker, Kubernetes and GCP",
+        "Technical design, testing and documentation",
+        "Agile delivery and cross-functional collaboration",
+    ],
+    languages=list(_SHARED_LANGUAGES),
+    contact=_SHARED_CONTACT.model_copy(
+        update={"email": "manuelalonsoper@gmail.com"}
+    ),
+    education=[item.model_copy() for item in _SHARED_EDUCATION],
+    experience=[
+        ExperienceRole(
+            organization="Estudio Tributario Canarias",
+            title="Full stack AI Developer - Freelance",
+            period="2025 - PRESENT",
+            bullets=[
+                "Implementation of a two-service RAG platform with an Orchestrator and CrewAI-based agents.",
+                "Integration of AI-powered document analysis, rule extraction, and scenario summaries.",
+                "Development of an agentic planning and pricing interface for legal automations using React, TypeScript, and FastAPI.",
+                "Integration of WordPress with the RAG agent system and consolidation of two Joomla websites.",
+                "Development of the production Pricing Wizard SaaS platform using Python, Node.js, FastAPI, React, TypeScript, and Tailwind CSS.",
+                "Development of responsive frontend applications using React, TypeScript, and Material UI.",
+                "Implementation of role-based admin and customer portals with Supabase authentication.",
+                "Development of an Express.js and PostgreSQL API for pricing rules, scenarios, and integrations.",
+                "Deployment and testing using Docker, Kubernetes, GCP, Railway, Netlify, and Playwright.",
+            ],
+        ),
+        ExperienceRole(
+            organization="Sopra Steria Norway",
+            title="Senior Software Engineer",
+            period="2022 - 2024",
+            bullets=[
+                "Development of a live conversation application for a Pepper robot in Python.",
+                "Integration with ChatGPT and Google Speech Recognition.",
+                "Analysis of existing ITSM processes and integrations to design effective replacement solutions.",
+                "Design, development, and testing of tailored ServiceNow applications across ITSM, CSM, and FSM.",
+                "Automation of manual processes using Flow Designer, Integration Hub, and JavaScript.",
+                "Implementation of REST integrations between ServiceNow, Azure AD, and other external systems.",
+                "Development of user interfaces, Service Portal widgets, and ServiceNow mobile applications.",
+                "Automated testing, technical documentation, customer demonstrations, training, and ongoing support.",
+            ],
+        ),
+        ExperienceRole(
+            organization="Posten Norway",
+            title="System developer",
+            period="2019 - 2021",
+            bullets=[
+                "Collaborate with Digdir and other partners to build new functionalities for the interface.",
+                "Shaping the team strategy and OKRs, as well as participation in workshops for product development.",
+                "Development of the front-end with Javascript, React and Redux as the main technologies.",
+                "Development of backend systems in Java and .NET, extending existing APIs.",
+                "Writing automated tests both on the front and backend.",
+                "Reduction of technical debt by re-writing outdated parts of the code.",
+                "Using collaboration tools like Miro, Figma, Slack and GitHub.",
+                "Experience with Azure Cosmos DB, Jupyter Notebooks, Kibana and Grafana for monitoring.",
+                "Third line support.",
+            ],
+        ),
+        ExperienceRole(
+            organization="S5 Consulting",
+            title="SAP and Neptune consultant",
+            period="2018",
+            bullets=[
+                "Development of internal applications and projects on the SAP Cloud platform.",
+                "Integrate between the backend systems and the SAP Cloud platform.",
+                "Development of applications on Neptune's Planet 9 platform.",
+                "Building applications to demonstrate the capabilities of Disruptive Technologies IoT products.",
+                "Exploration of new technologies and execution of proof of concept projects.",
+            ],
+        ),
+        ExperienceRole(
+            organization="Diggit Norge",
+            title="Frontend developer",
+            period="2017",
             bullets=[
                 "Build an e-learning platform, where I collaborated interdisciplinary with the product and design teams.",
                 "Front End development with React and Redux as the main technologies used.",

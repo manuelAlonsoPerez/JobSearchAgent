@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from jobsearchagent.config import SRC_DIR
+from jobsearchagent.database import add_to_review, upsert_job
 from jobsearchagent.models import JobState
 from jobsearchagent.preparation.fields import (
     ExperienceRole,
@@ -60,6 +61,15 @@ class SourceCvTests(unittest.TestCase):
         self.assertEqual(source.template_id, "fullstack")
         self.assertEqual(source.path.name, "Manuel Alonso - Developer Full stack.pdf")
 
+    def test_ai_profile_resolves_docs_pdf_and_extracts_text(self) -> None:
+        source = resolve_source_cv("ai-developer")
+        self.assertEqual(source.template_id, "ai")
+        self.assertEqual(source.path.parent, (SRC_DIR / "docs").resolve())
+        self.assertEqual(source.path.name, "Manuel Alonso - Developer AI.pdf")
+        self.assertIn("RAG", source.raw_text)
+        self.assertIn("CrewAI", source.raw_text)
+        self.assertIn("MANUEL ALONSO", source.raw_text.upper())
+
     def test_unknown_profile_lists_available_ids(self) -> None:
         with self.assertRaises(KeyError) as raised:
             resolve_source_cv("not-a-real-profile")
@@ -75,6 +85,10 @@ class SourceCvTests(unittest.TestCase):
         self.assertEqual(
             template_id_from_filename("Manuel Alonso - Developer Full stack.pdf"),
             "fullstack",
+        )
+        self.assertEqual(
+            template_id_from_filename("Manuel Alonso - Developer AI.pdf"),
+            "ai",
         )
 
     def test_letter_spaced_pdf_text_collapses(self) -> None:
@@ -351,6 +365,79 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(code, 1)
         self.assertTrue(any("available" in item for item in messages))
+
+    def test_profile_or_url_alone_is_rejected(self) -> None:
+        messages: list[str] = []
+        code = main(["--profile", "servicenow-developer"], output_fn=messages.append)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("both --profile and --url" in item for item in messages))
+
+    def test_empty_review_queue_exits_nonzero(self) -> None:
+        messages: list[str] = []
+        code = main([], output_fn=messages.append, queue_fn=list)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("No pending" in item for item in messages))
+
+    def test_review_queue_writes_a_cv_per_pending_job(self) -> None:
+        messages: list[str] = []
+        scraped: list[str] = []
+
+        def chat_fn(messages_in, **kwargs):
+            text = messages_in[-1]["content"]
+            start = text.index("Current CV fields (JSON):\n") + len(
+                "Current CV fields (JSON):\n"
+            )
+            end = text.index("\n\nAllowed facts")
+            return text[start:end].strip()
+
+        with tempfile.TemporaryDirectory() as temporary:
+            db_path = Path(temporary) / "jobs.db"
+            first = _job(profile_id="servicenow-developer")
+            second = _job(
+                url="https://www.linkedin.com/jobs/view/2222222222/",
+                source_job_id="2222222222",
+                title="Frontend Engineer",
+                company="Other Co",
+                profile_id="frontend-developer",
+                raw_description="React TypeScript frontend role.",
+            )
+            upsert_job(first, path=db_path)
+            upsert_job(second, path=db_path)
+            add_to_review(
+                first["url"],
+                "Manual apply",
+                first["url"],
+                first["profile_id"],
+                path=db_path,
+            )
+            add_to_review(
+                second["url"],
+                "Manual apply",
+                second["url"],
+                second["profile_id"],
+                path=db_path,
+            )
+            add_to_review(
+                "https://www.linkedin.com/jobs/view/3333333333/",
+                "No profile",
+                "https://www.linkedin.com/jobs/view/3333333333/",
+                path=db_path,
+            )
+            code = main(
+                ["--output-dir", temporary],
+                output_fn=messages.append,
+                scrape_fn=lambda url: scraped.append(url) or _job(url=url),
+                chat_fn=chat_fn,
+                db_path=db_path,
+            )
+            first_pdf = Path(temporary) / tailored_filename(first)
+            second_pdf = Path(temporary) / tailored_filename(second)
+            self.assertEqual(code, 0)
+            self.assertTrue(first_pdf.is_file())
+            self.assertTrue(second_pdf.is_file())
+            self.assertEqual(scraped, [])
+            self.assertTrue(any("skip: no profile_id" in item for item in messages))
+            self.assertTrue(any("wrote=2" in item for item in messages))
 
     def test_initial_fields_overlay_profile_email(self) -> None:
         source = resolve_source_cv("frontend-developer")

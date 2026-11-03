@@ -10,7 +10,7 @@ from ..apply.answers import resolve_cv_path
 from ..utils.pdf import extract_pdf_text
 from ..utils.profile import load_profile
 
-TemplateId = Literal["servicenow", "fullstack"]
+TemplateId = Literal["servicenow", "fullstack", "ai"]
 
 
 @dataclass(frozen=True)
@@ -49,6 +49,10 @@ def resolve_source_cv(profile_id: str) -> SourceCv:
 def template_id_from_filename(name: str) -> TemplateId:
     """Pick the HTML template from the source filename, not the LLM."""
 
-    if "servicenow" in Path(name).stem.casefold():
+    stem = Path(name).stem.casefold()
+    if "servicenow" in stem:
         return "servicenow"
+    tokens = set(stem.replace("-", " ").replace("_", " ").split())
+    if "ai" in tokens:
+        return "ai"
     return "fullstack"

@@ -19,7 +19,7 @@ def chat(
     model: str | None = None,
     format: OutputFormat | None = None,
     *,
-    timeout: float = 300.0,
+    timeout: float | None = None,
     client: httpx.Client | None = None,
 ) -> str:
     """Generate one non-streaming Ollama chat response.
@@ -27,6 +27,8 @@ def chat(
     ``model=None`` or ``model="writer"`` selects ``WRITER_MODEL``.
     ``model="apply"`` selects ``APPLY_MODEL``. A concrete Ollama model name
     can also be passed directly.
+
+    When ``timeout`` is omitted, ``WRITER_TIMEOUT_SECONDS`` is used (default 900).
     """
 
     if not messages:
@@ -38,17 +40,21 @@ def chat(
         "writer": settings.writer_model,
         "apply": settings.apply_model,
     }.get(model, model)
+    request_timeout = (
+        timeout if timeout is not None else settings.writer_timeout_seconds
+    )
 
     payload: dict[str, Any] = {
         "model": selected_model,
         "messages": [dict(message) for message in messages],
         "stream": False,
+        "options": {"num_ctx": settings.writer_num_ctx},
     }
     if format is not None:
         payload["format"] = format
 
     owns_client = client is None
-    http_client = client or httpx.Client(timeout=timeout)
+    http_client = client or httpx.Client(timeout=request_timeout)
     try:
         response = http_client.post(
             f"{settings.ollama_base_url.rstrip('/')}/api/chat",
@@ -63,4 +69,10 @@ def chat(
     message = body.get("message")
     if not isinstance(message, dict) or not isinstance(message.get("content"), str):
         raise ValueError("Ollama response has no string 'message.content'")
-    return message["content"]
+    content = message["content"]
+    if body.get("done_reason") == "length":
+        raise ValueError(
+            "Ollama truncated the reply (context window full). "
+            "Increase WRITER_NUM_CTX in .env and retry."
+        )
+    return content

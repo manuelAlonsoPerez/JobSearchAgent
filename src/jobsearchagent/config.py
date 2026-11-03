@@ -28,9 +28,12 @@ class Settings(BaseModel):
     jev_model: str = "nimble"
     jev_timeout_seconds: float = Field(default=500.0, gt=0)
     writer_model: str = "qwen2.5:7b"
+    writer_timeout_seconds: float = Field(default=900.0, gt=0)
+    writer_num_ctx: int = Field(default=8192, ge=2048)
     apply_model: str = "qwen2.5:7b"
     db_path: Path = Path("~/.jobsearchagent/jobsearch.db")
     chrome_profile_dir: Path = Path("~/.jobsearchagent/chrome-profile")
+    tailored_cv_dir: Path = Path("/Users/macnolo/Desktop/Trabajo")
     linkedin_search_page_limit: int = Field(default=2, ge=1)
     linkedin_daily_apply_limit: int = Field(default=10, ge=1)
     linkedin_action_delay_ms: int = Field(default=1200, ge=0)
@@ -55,10 +58,15 @@ def get_settings() -> Settings:
         jev_model=os.getenv("JEV_MODEL", "nimble"),
         jev_timeout_seconds=os.getenv("JEV_TIMEOUT_SECONDS", "500"),
         writer_model=os.getenv("WRITER_MODEL", "qwen2.5:7b"),
+        writer_timeout_seconds=os.getenv("WRITER_TIMEOUT_SECONDS", "900"),
+        writer_num_ctx=os.getenv("WRITER_NUM_CTX", "8192"),
         apply_model=os.getenv("APPLY_MODEL", "qwen2.5:7b"),
         db_path=Path(os.getenv("DB_PATH", "~/.jobsearchagent/jobsearch.db")).expanduser(),
         chrome_profile_dir=Path(
             os.getenv("CHROME_PROFILE_DIR", "~/.jobsearchagent/chrome-profile")
+        ).expanduser(),
+        tailored_cv_dir=Path(
+            os.getenv("TAILORED_CV_DIR", "/Users/macnolo/Desktop/Trabajo")
         ).expanduser(),
         linkedin_search_page_limit=os.getenv("LINKEDIN_SEARCH_PAGE_LIMIT", "2"),
         linkedin_daily_apply_limit=os.getenv("LINKEDIN_DAILY_APPLY_LIMIT", "10"),

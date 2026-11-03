@@ -132,6 +132,32 @@ class LlmTests(unittest.TestCase):
         self.assertEqual(captured["model"], "apply-test")
         self.assertEqual(captured["format"], "json")
         self.assertFalse(captured["stream"])
+        self.assertEqual(captured["options"]["num_ctx"], 8192)
+
+    def test_truncated_ollama_reply_is_an_error(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "message": {"role": "assistant", "content": '{"name":'},
+                    "done_reason": "length",
+                },
+            )
+
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            with self.assertRaises(ValueError) as raised:
+                chat(
+                    [{"role": "user", "content": "Return JSON"}],
+                    client=client,
+                )
+        self.assertIn("truncated", str(raised.exception).casefold())
+
+    def test_writer_timeout_comes_from_settings(self) -> None:
+        from jobsearchagent.config import get_settings
+
+        self.assertGreaterEqual(get_settings().writer_timeout_seconds, 500)
+        with patch.dict(os.environ, {"WRITER_TIMEOUT_SECONDS": "777"}):
+            self.assertEqual(get_settings().writer_timeout_seconds, 777.0)
 
 
 class TextUtilityTests(unittest.TestCase):

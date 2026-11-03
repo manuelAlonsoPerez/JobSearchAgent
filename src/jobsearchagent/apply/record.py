@@ -27,7 +27,8 @@ def record(state: JobState, *, path: str | Path | None = None) -> dict[str, Any]
 
     review: dict[str, str] | None = None
     if _needs_review(state):
-        add_to_review(url, reason, link, path=path)
+        profile_id = str(state.get("profile_id") or "").strip() or None
+        add_to_review(url, reason, link, profile_id, path=path)
         review = {"url": url, "reason": reason, "link": link}
 
     return {

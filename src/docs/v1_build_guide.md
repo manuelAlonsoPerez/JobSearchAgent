@@ -2,6 +2,7 @@
 
 > Implementation plan for the MVP agreed in [`architechture_prompt.md`](./architechture_prompt.md).
 > Companion: [`jev_ollama_agent_guide.md`](./jev_ollama_agent_guide.md) for the decision models.
+> Tailored CVs: [`tailored_cv_guide.md`](./tailored_cv_guide.md) (standalone agent first; not on `run` yet).
 >
 > **MVP override (October 2026):** LinkedIn replaces InfoJobs as the first production vertical
 > slice. Where the architecture document still names InfoJobs as the MVP site, this guide is
@@ -112,6 +113,7 @@ flowchart LR
 OLLAMA_BASE_URL=http://localhost:11434
 JEV_MODEL=nimble
 WRITER_MODEL=qwen2.5:7b
+WRITER_TIMEOUT_SECONDS=900
 APPLY_MODEL=qwen2.5:7b
 DB_PATH=~/.jobsearchagent/jobsearch.db
 CHROME_PROFILE_DIR=~/.jobsearchagent/chrome-profile
@@ -290,7 +292,8 @@ DRY_RUN=true           # never actually submits while true
 
 ### ☐ Part A4 — `preparation/cv.py` + `preparation/cover_letter.py` · `GEN`
 - **Goal:** generate tailored **CV** (first), then **cover letter** (uses CV as context).
-- **Depends on:** F4b, F2; profile facts from `work_profiles.yaml`, base CV from `src/assets`.
+- **Work order:** [`tailored_cv_guide.md`](./tailored_cv_guide.md) — standalone `--profile` + `--url` agent first; graph hook later.
+- **Depends on:** F4b, F2; profile facts from `work_profiles.yaml`, base CV from `src/docs`.
 - **Reads:** `profile_id, raw_description`, `artifacts["cv"]` (for the letter). **Writes:** `artifacts["cv"|"cover_letter"].content`.
 - **Hard rule:** only facts present in `work_profiles.yaml`/CV — no invention.
 - **Signatures:** `def write_cv(state)->Artifact: ...` · `def write_cover_letter(state)->Artifact: ...`

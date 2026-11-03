@@ -366,9 +366,22 @@ td strong {
 
 .actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  align-items: center;
   gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.actions .button,
+.actions .ghost {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+td.actions-cell {
+  width: 1%;
+  white-space: nowrap;
 }
 
 .badge {

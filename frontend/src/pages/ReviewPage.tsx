@@ -201,7 +201,7 @@ export function ReviewPage({ onChanged }: ReviewPageProps) {
                       <ReviewBadge value={item.status} />
                     </td>
                     <td className="muted">{formatWhen(item.created_at)}</td>
-                    <td>
+                    <td className="actions-cell">
                       <div className="actions">
                         <a
                           className="button small"

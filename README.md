@@ -117,14 +117,14 @@ After `npm run build`, `serve` can also host `frontend/dist` at `http://127.0.0.
 These flags apply to `run`, `discover`, and `linkedin_agent`. Defaults are remote, Easy Apply,
 posted in the last week, sorted by relevance.
 
-| Flag                               | Choices (default)                     | LinkedIn parameter               |
-| ---------------------------------- | ------------------------------------- | -------------------------------- |
-| `--geo-id`                         | region id, e.g. `91000007` (EMEA)     | `geoId` (replaces text location) |
-| `--posted-within`                  | `24h`, `week`\*, `month`              | `f_TPR`                          |
-| `--month`                          | integer months, e.g. `1`              | `f_TPR` (overrides posted-within)|
-| `--work-type`                      | `remote`\*, `hybrid`, `onsite`, `any` | `f_WT` (`any` removes it)        |
-| `--sort`                           | `relevance`\*, `recent`               | `sortBy`                         |
-| `--easy-apply` / `--no-easy-apply` | on\* (`linkedin_agent`)               | `f_AL`                           |
+| Flag                               | Choices (default)                     | LinkedIn parameter                |
+| ---------------------------------- | ------------------------------------- | --------------------------------- |
+| `--geo-id`                         | region id, e.g. `91000007` (EMEA)     | `geoId` (replaces text location)  |
+| `--posted-within`                  | `24h`, `week`\*, `month`              | `f_TPR`                           |
+| `--month`                          | integer months, e.g. `1`              | `f_TPR` (overrides posted-within) |
+| `--work-type`                      | `remote`\*, `hybrid`, `onsite`, `any` | `f_WT` (`any` removes it)         |
+| `--sort`                           | `relevance`\*, `recent`               | `sortBy`                          |
+| `--easy-apply` / `--no-easy-apply` | on\* (`linkedin_agent`)               | `f_AL`                            |
 
 `--geo-id` runs one region-scoped search instead of iterating `--location`. Triage eligibility
 still follows `JOB_LOCATIONS` / `--location`. `--month N` keeps jobs published in the last N
@@ -309,3 +309,7 @@ PYTHONPATH=src python scripts/delete_jobs.py --db-path /path/to/jobsearch.db
 - Generate a tailored CV and cover letter (A4 GEN) and JEV-score them (A5).
 
 See `src/docs/v1_build_guide.md` for remaining implementation phases.
+
+PYTHONPATH=src python -m jobsearchagent.tailor_cv \
+ --profile fullstack-developer \
+ --url https://www.linkedin.com/jobs/view/4468019259/

@@ -245,7 +245,7 @@ class LinkedInDiscovery:
                     stats["duplicate"] = int(stats.get("duplicate") or 0) + 1
                 continue
             try:
-                state = self._scrape_job(
+                state = self.scrape_job(
                     page,
                     url,
                     max_age_seconds=search.posted_within_seconds,
@@ -435,6 +435,17 @@ class LinkedInDiscovery:
                 )
             page.wait_for_timeout(800)
         return list(collected.values())[:limit]
+
+    def scrape_job(
+        self,
+        page: Page,
+        url: str,
+        *,
+        max_age_seconds: int | None = None,
+    ) -> JobState:
+        """Read one LinkedIn job posting. Does not open Easy Apply or Submit."""
+
+        return self._scrape_job(page, url, max_age_seconds=max_age_seconds)
 
     def _scrape_job(
         self,

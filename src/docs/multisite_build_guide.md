@@ -4,8 +4,11 @@
 > v1 (LinkedIn Easy Apply) stays in [`v1_build_guide.md`](./v1_build_guide.md). This guide does not
 > reopen triage, CV writing, or Easy Apply fill.
 >
-> **Status:** Part M1 is done. `enabled_sites()` reads `sites.yaml`. `run` still opens one
-> LinkedIn session and does not walk the other enabled rows until Part M5.
+> **Status:** Parts M1 and M2 are done. `enabled_sites()` reads `sites.yaml`, and
+> `discovery/registry.py` resolves adapter `linkedin`. `run` still uses the LinkedIn
+> command path, refuses to open linkedin.com while that row is blocked, and does not
+> walk the other enabled rows until Part M5. Himalayas and EuroTechJobs have no adapter
+> yet, so `require_adapters(enabled_sites())` names those site ids and stops.
 >
 > **How we use this doc:** each **Part** is one work order. You say *"build Part M3"*; I implement
 > that part only. Tick the box when done.
@@ -215,7 +218,7 @@ LinkedIn `run` must still pass its current tests after every part. A part that o
   - LinkedIn’s `name` remains `"LinkedIn Jobs"`.
 - **Done when:** a unit test loads the real `sites.yaml`; the enabled ids are `himalayas`, `eurotechjobs`, and `eurotechjobs-remote` (LinkedIn stays in the file and is blocked); a disabled Spain board is absent; a fixture missing `adapter` raises.
 
-### ☐ Part M2 — discovery protocol · `CODE`
+### ☑ Part M2 — discovery protocol · `CODE`
 
 - **Goal:** one adapter interface. LinkedIn’s current scraper becomes adapter `linkedin` without changing its search behaviour.
 - **Depends on:** M1, A1.

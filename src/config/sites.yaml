@@ -5,8 +5,15 @@
 # Target: IT roles that are remote, project/contract, or EMEA.
 # Profiles: ServiceNow, full-stack (React/TS/Python/Node/Java/.NET), AI/RAG/agents.
 #
-# enabled: true  → v2 discovery set (remote-first, EMEA tech, contract, LinkedIn, Norway).
-# enabled: false → kept for later; Spain-only, LATAM, bot-hostile, or low-signal boards.
+# enabled: true  → first multi-site development set only:
+#                  LinkedIn (existing adapter), Himalayas, EuroTechJobs.
+# enabled: false → kept in this file for later. The full previous enabled set
+#                  is copied in sites_extended.yaml.
+#
+# Why these three: Himalayas has the most Norway-open remote jobs for the
+# React / TypeScript / full-stack profiles. EuroTechJobs is the Europe keyword
+# search for ServiceNow, React, full-stack, and Python. LinkedIn stays on as
+# the control. Other boards wait until those two adapters exist.
 #
 # Per-site fields:
 #   id                 stable slug (thread_id / adapter key)
@@ -21,6 +28,7 @@
 #   posted_within      native | post_filter | unsupported  (--month)
 #   work_type          native | url | post_filter | unsupported  (--work-type)
 #   profile            shared | dedicated  (Chrome profile)
+#   query_style        phrase (default) | token   (EuroTechJobs uses token)
 #
 # Query shape: single tokens (servicenow, fullstack, react, python) on path-style
 # boards; phrases on LinkedIn, FINN, Welcome to the Jungle, FreelancerMap.
@@ -119,15 +127,15 @@ sites:
     work_type: native
     profile: shared
 
-  # ── Enabled: remote-first developer boards ─────────────────────────────
-  # Global remote listings. JEV still drops geo-locked remote that excludes
-  # Norway / EEA. Filter listings to ServiceNow, React, TypeScript, Python,
-  # Java, .NET, or AI/RAG after scrape.
+  # ── Remote-first developer boards ─────────────────────────────────────
+  # Only Himalayas is on for the first adapters. The others stay listed and
+  # disabled. Global remote listings. JEV still drops geo-locked remote that
+  # excludes Norway / EEA.
   - id: remoteok
     name: "RemoteOK"
     url: "https://remoteok.com/remote-dev-jobs"
     type: static
-    enabled: true
+    enabled: false
     adapter: remoteok
     auth: none
     supports_query: false
@@ -140,7 +148,7 @@ sites:
     name: "We Work Remotely Full Stack"
     url: "https://weworkremotely.com/categories/remote-full-stack-programming-jobs"
     type: static
-    enabled: true
+    enabled: false
     adapter: wwr
     auth: none
     supports_query: false
@@ -153,7 +161,7 @@ sites:
     name: "We Work Remotely Front End"
     url: "https://weworkremotely.com/categories/remote-front-end-programming-jobs"
     type: static
-    enabled: true
+    enabled: false
     adapter: wwr
     auth: none
     supports_query: false
@@ -166,7 +174,7 @@ sites:
     name: "We Work Remotely Back End"
     url: "https://weworkremotely.com/categories/remote-back-end-programming-jobs"
     type: static
-    enabled: true
+    enabled: false
     adapter: wwr
     auth: none
     supports_query: false
@@ -179,7 +187,7 @@ sites:
     name: "Remotive Software"
     url: "https://remotive.com/remote-jobs/software-development"
     type: static
-    enabled: true
+    enabled: false
     adapter: remotive
     auth: none
     supports_query: false
@@ -188,6 +196,8 @@ sites:
     work_type: url
     profile: shared
 
+  # First new adapter. Largest counted set of Norway-open remote jobs for
+  # React, TypeScript, full-stack, and frontend. ServiceNow hits are sparse.
   - id: himalayas
     name: "Himalayas"
     url: "https://himalayas.app/jobs/developer"
@@ -205,7 +215,7 @@ sites:
     name: "JustRemote"
     url: "https://justremote.co/remote-developer-jobs"
     type: static
-    enabled: true
+    enabled: false
     adapter: justremote
     auth: none
     supports_query: false
@@ -218,7 +228,7 @@ sites:
     name: "Working Nomads"
     url: "https://www.workingnomads.com/remote-development-jobs"
     type: static
-    enabled: true
+    enabled: false
     adapter: working_nomads
     auth: none
     supports_query: false
@@ -231,7 +241,7 @@ sites:
     name: "Nodesk"
     url: "https://nodesk.co/remote-jobs/"
     type: static
-    enabled: true
+    enabled: false
     adapter: nodesk
     auth: none
     supports_query: false
@@ -244,7 +254,7 @@ sites:
     name: "Dynamite Jobs"
     url: "https://dynamitejobs.com/remote-development-jobs"
     type: static
-    enabled: true
+    enabled: false
     adapter: dynamite
     auth: none
     supports_query: false
@@ -257,7 +267,7 @@ sites:
     name: "Jobgether"
     url: "https://jobgether.com/remote-jobs/software-engineer"
     type: static
-    enabled: true
+    enabled: false
     adapter: jobgether
     auth: none
     supports_query: false
@@ -270,7 +280,7 @@ sites:
     name: "Startup.jobs"
     url: "https://startup.jobs/?q={query_encoded}&remote=true"
     type: search
-    enabled: true
+    enabled: false
     adapter: startup_jobs
     auth: none
     supports_query: true
@@ -279,12 +289,13 @@ sites:
     work_type: url
     profile: shared
 
-  # ── Enabled: EMEA / EU tech ────────────────────────────────────────────
+  # ── EMEA / EU tech ─────────────────────────────────────────────────────
+  # EuroTechJobs is on (search + remote category). The other EU boards wait.
   - id: eu-remote-jobs
     name: "EU Remote Jobs"
     url: "https://euremotejobs.com/"
     type: static
-    enabled: true
+    enabled: false
     adapter: eu_remote_jobs
     auth: none
     supports_query: false
@@ -293,7 +304,9 @@ sites:
     work_type: url
     profile: shared
 
-  # Keyword in the path. Use one token (servicenow, react, python, fullstack).
+  # Second new adapter. Europe keyword search for ServiceNow, React,
+  # full-stack, and Python. Path keyword, so queries are single tokens
+  # (servicenow, react, python, fullstack), not the full searches.yaml phrase.
   # Europe-wide — no /spain lock. Drop roles that need a non-EEA permit.
   - id: eurotechjobs
     name: "EuroTechJobs"
@@ -301,6 +314,7 @@ sites:
     type: search
     enabled: true
     adapter: eurotechjobs
+    query_style: token
     auth: none
     supports_query: true
     supports_location: false
@@ -326,7 +340,7 @@ sites:
     name: "Landing.jobs"
     url: "https://landing.jobs/jobs?search={query_encoded}"
     type: search
-    enabled: true
+    enabled: false
     adapter: landing_jobs
     auth: none
     supports_query: true
@@ -341,7 +355,7 @@ sites:
     name: "Welcome to the Jungle"
     url: "https://www.welcometothejungle.com/en/jobs?query={query_encoded}&aroundQuery={location_encoded}"
     type: search
-    enabled: true
+    enabled: false
     adapter: wttj
     auth: none
     supports_query: true
@@ -355,7 +369,7 @@ sites:
     name: "Arbeitnow Remote"
     url: "https://www.arbeitnow.com/jobs/locations/remote"
     type: static
-    enabled: true
+    enabled: false
     adapter: arbeitnow
     auth: none
     supports_query: false
@@ -369,7 +383,7 @@ sites:
     name: "FINN IT"
     url: "https://www.finn.no/job/search?q={query_encoded}&occupation=0.23"
     type: search
-    enabled: true
+    enabled: false
     adapter: finn
     auth: none
     supports_query: true
@@ -378,12 +392,12 @@ sites:
     work_type: post_filter
     profile: shared
 
-  # ── Enabled: contract / project IT ─────────────────────────────────────
+  # ── Contract / project IT (later; not in the first pair) ───────────────
   - id: arc-dev
     name: "Arc.dev"
     url: "https://arc.dev/remote-jobs"
     type: static
-    enabled: true
+    enabled: false
     adapter: arc
     auth: none
     supports_query: false
@@ -396,7 +410,7 @@ sites:
     name: "FreelancerMap"
     url: "https://www.freelancermap.com/projects?query={query_encoded}"
     type: search
-    enabled: true
+    enabled: false
     adapter: freelancermap
     auth: none
     supports_query: true
@@ -409,7 +423,7 @@ sites:
     name: "FreelancerMap Remote EU"
     url: "https://www.freelancermap.com/projects/remote-for-eu"
     type: static
-    enabled: true
+    enabled: false
     adapter: freelancermap
     auth: none
     supports_query: false

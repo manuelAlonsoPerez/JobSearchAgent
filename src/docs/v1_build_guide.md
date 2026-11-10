@@ -3,6 +3,7 @@
 > Implementation plan for the MVP agreed in [`architechture_prompt.md`](./architechture_prompt.md).
 > Companion: [`jev_ollama_agent_guide.md`](./jev_ollama_agent_guide.md) for the decision models.
 > Tailored CVs: [`tailored_cv_guide.md`](./tailored_cv_guide.md) (standalone agent first; not on `run` yet).
+> Multi-site discovery: [`multisite_build_guide.md`](./multisite_build_guide.md) (after v1; `run` is still LinkedIn-only).
 >
 > **MVP override (October 2026):** LinkedIn replaces InfoJobs as the first production vertical
 > slice. Where the architecture document still names InfoJobs as the MVP site, this guide is
@@ -27,7 +28,8 @@ accept/reject/needs_confirmation) → tailor **CV** → write **cover letter** �
 generative ≤ 7–8B · SQLite + checkpointer · persistent Chrome profile · overnight/dry-run runner.
 
 **Deferred (not v1):** Workday/`employers.yaml`, smart-extract, email/project-blurb artifacts,
-parallel multi-artifact fan-out, external ATS automation, the retry frontend, multi-site.
+parallel multi-artifact fan-out, external ATS automation, the retry frontend. Multi-site discovery
+is specified in [`multisite_build_guide.md`](./multisite_build_guide.md) and is not part of v1.
 
 **LinkedIn boundary:** use the normal authenticated web UI at a conservative rate. Security
 challenges, CAPTCHA, expired sessions, unavailable Easy Apply, or any unexpected confirmation
@@ -396,3 +398,6 @@ DRY_RUN=true           # never actually submits while true
 
 Say e.g. **"build Part F1"** (or a phase) and I'll implement it against the contract above, then we
 move down the list. I'll keep each part small, tested against its *Done when*, before the next.
+
+Multi-site work uses the same rule against [`multisite_build_guide.md`](./multisite_build_guide.md)
+(say *"build Part M1"*). Do not start an M-part from this v1 list.

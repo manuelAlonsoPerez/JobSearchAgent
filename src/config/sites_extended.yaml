@@ -1,0 +1,683 @@
+# JobSearchAgent site registry.
+# A scraper fills {query_encoded} and {location_encoded} (both URL-encoded).
+#
+# Candidate (from work_profiles.yaml): Oslo, EEA-eligible.
+# Target: IT roles that are remote, project/contract, or EMEA.
+# Profiles: ServiceNow, full-stack (React/TS/Python/Node/Java/.NET), AI/RAG/agents.
+#
+# enabled: true  → v2 discovery set (remote-first, EMEA tech, contract, LinkedIn, Norway).
+# enabled: false → kept for later; Spain-only, LATAM, bot-hostile, or low-signal boards.
+#
+# Per-site fields:
+#   id                 stable slug (thread_id / adapter key)
+#   name               display + existing LinkedIn lookup key
+#   url                listing or search template
+#   type               search | static
+#   enabled            whether `run` should walk this site
+#   adapter            discovery adapter to use
+#   auth               none | login
+#   supports_query     URL has {query_encoded} or the adapter can apply queries
+#   supports_location  URL has {location_encoded} or the adapter can apply locations
+#   posted_within      native | post_filter | unsupported  (--month)
+#   work_type          native | url | post_filter | unsupported  (--work-type)
+#   profile            shared | dedicated  (Chrome profile)
+#
+# Query shape: single tokens (servicenow, fullstack, react, python) on path-style
+# boards; phrases on LinkedIn, FINN, Welcome to the Jungle, FreelancerMap.
+
+# ── Manual-only ATS domains ──────────────────────────────────────────────
+# Jobs that route through these are flagged manual: the bot skips them.
+manual_ats:
+  - "ibegin.tcsapps.com"       # TCS iBegin — unsolvable CAPTCHA
+
+# ── Blocked sites — too problematic for automation ───────────────────────
+blocked:
+  sites:
+    - "glassdoor"
+    - "google"
+    - "accenture"
+    - "AccentureCareers"
+    - "Workopolis"
+  url_patterns:
+    - "%glassdoor%"
+    - "%google.com/about/careers%"
+    - "%google.jobs%"
+    - "%accenture%"
+    - "%workopolis.com/out%"
+
+# ── Blocked SSO domains — cannot authenticate through these ──────────────
+blocked_sso:
+  - "accounts.google.com"
+  - "login.microsoftonline.com"
+  - "okta.com"
+  - "auth0.com"
+  - "sso.cisco.com"
+
+# ── Base URLs for URL resolution ─────────────────────────────────────────
+# Used to resolve relative links scraped from a site. Null means the
+# scraper must already have absolute URLs.
+base_urls:
+  "LinkedIn Jobs": "https://www.linkedin.com"
+  "RemoteOK": "https://remoteok.com"
+  "We Work Remotely Full Stack": "https://weworkremotely.com"
+  "We Work Remotely Front End": "https://weworkremotely.com"
+  "We Work Remotely Back End": "https://weworkremotely.com"
+  "Remotive Software": "https://remotive.com"
+  "Himalayas": "https://himalayas.app"
+  "JustRemote": "https://justremote.co"
+  "Working Nomads": "https://www.workingnomads.com"
+  "Nodesk": "https://nodesk.co"
+  "Dynamite Jobs": "https://dynamitejobs.com"
+  "Jobgether": "https://jobgether.com"
+  "Startup.jobs": "https://startup.jobs"
+  "EU Remote Jobs": "https://euremotejobs.com"
+  "EuroTechJobs": "https://www.eurotechjobs.com"
+  "EuroTechJobs Remote": "https://www.eurotechjobs.com"
+  "Landing.jobs": "https://landing.jobs"
+  "Welcome to the Jungle": "https://www.welcometothejungle.com"
+  "Arc.dev": "https://arc.dev"
+  "FreelancerMap": "https://www.freelancermap.com"
+  "FreelancerMap Remote EU": "https://www.freelancermap.com"
+  "Arbeitnow Remote": "https://www.arbeitnow.com"
+  "FINN IT": "https://www.finn.no"
+  "InfoJobs": "https://www.infojobs.net"
+  "InfoJobs Remote": "https://www.infojobs.net"
+  "Tecnoempleo": "https://www.tecnoempleo.com"
+  "Tecnoempleo Remote": "https://www.tecnoempleo.com"
+  "Ticjob": "https://ticjob.es"
+  "JobFluent Madrid": "https://www.jobfluent.com"
+  "JobFluent Barcelona": "https://www.jobfluent.com"
+  "JobFluent Valencia": "https://www.jobfluent.com"
+  "JobFluent Remote": "https://www.jobfluent.com"
+  "Manfred": "https://www.getmanfred.com"
+  "Michael Page ServiceNow": "https://www.michaelpage.es"
+  "Michael Page Full Stack": "https://www.michaelpage.es"
+  "Michael Page React": "https://www.michaelpage.es"
+  "Michael Page Python": "https://www.michaelpage.es"
+  "Talent.com Spain": "https://es.talent.com"
+  "Indeed Spain": "https://es.indeed.com"
+  "Get on Board": "https://www.getonbrd.com"
+  "Remotive Spain": "https://remotive.com"
+  "Hacker News Jobs": "https://news.ycombinator.com/"
+  "Malt": "https://www.malt.com"
+
+sites:
+  # ── Enabled: LinkedIn (existing v1 path — do not rename) ───────────────
+  # Easy Apply is added dynamically by config.linkedin_search_url().
+  # Keep location explicit: omitting it can fall back to the account region.
+  # currentJobId is omitted because it only selects a result card.
+  - id: linkedin
+    name: "LinkedIn Jobs"
+    url: "https://www.linkedin.com/jobs/search/?keywords={query_encoded}&location={location_encoded}&f_TPR=r604800&f_WT=2&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true&sortBy=R"
+    type: search
+    enabled: true
+    adapter: linkedin
+    auth: login
+    supports_query: true
+    supports_location: true
+    posted_within: native
+    work_type: native
+    profile: shared
+
+  # ── Enabled: remote-first developer boards ─────────────────────────────
+  # Global remote listings. JEV still drops geo-locked remote that excludes
+  # Norway / EEA. Filter listings to ServiceNow, React, TypeScript, Python,
+  # Java, .NET, or AI/RAG after scrape.
+  - id: remoteok
+    name: "RemoteOK"
+    url: "https://remoteok.com/remote-dev-jobs"
+    type: static
+    enabled: true
+    adapter: remoteok
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: wwr-fullstack
+    name: "We Work Remotely Full Stack"
+    url: "https://weworkremotely.com/categories/remote-full-stack-programming-jobs"
+    type: static
+    enabled: true
+    adapter: wwr
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: wwr-frontend
+    name: "We Work Remotely Front End"
+    url: "https://weworkremotely.com/categories/remote-front-end-programming-jobs"
+    type: static
+    enabled: true
+    adapter: wwr
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: wwr-backend
+    name: "We Work Remotely Back End"
+    url: "https://weworkremotely.com/categories/remote-back-end-programming-jobs"
+    type: static
+    enabled: true
+    adapter: wwr
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: remotive-software
+    name: "Remotive Software"
+    url: "https://remotive.com/remote-jobs/software-development"
+    type: static
+    enabled: true
+    adapter: remotive
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: himalayas
+    name: "Himalayas"
+    url: "https://himalayas.app/jobs/developer"
+    type: static
+    enabled: true
+    adapter: himalayas
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: justremote
+    name: "JustRemote"
+    url: "https://justremote.co/remote-developer-jobs"
+    type: static
+    enabled: true
+    adapter: justremote
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: working-nomads
+    name: "Working Nomads"
+    url: "https://www.workingnomads.com/remote-development-jobs"
+    type: static
+    enabled: true
+    adapter: working_nomads
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: nodesk
+    name: "Nodesk"
+    url: "https://nodesk.co/remote-jobs/"
+    type: static
+    enabled: true
+    adapter: nodesk
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: dynamite-jobs
+    name: "Dynamite Jobs"
+    url: "https://dynamitejobs.com/remote-development-jobs"
+    type: static
+    enabled: true
+    adapter: dynamite
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: jobgether
+    name: "Jobgether"
+    url: "https://jobgether.com/remote-jobs/software-engineer"
+    type: static
+    enabled: true
+    adapter: jobgether
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: startup-jobs
+    name: "Startup.jobs"
+    url: "https://startup.jobs/?q={query_encoded}&remote=true"
+    type: search
+    enabled: true
+    adapter: startup_jobs
+    auth: none
+    supports_query: true
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  # ── Enabled: EMEA / EU tech ────────────────────────────────────────────
+  - id: eu-remote-jobs
+    name: "EU Remote Jobs"
+    url: "https://euremotejobs.com/"
+    type: static
+    enabled: true
+    adapter: eu_remote_jobs
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  # Keyword in the path. Use one token (servicenow, react, python, fullstack).
+  # Europe-wide — no /spain lock. Drop roles that need a non-EEA permit.
+  - id: eurotechjobs
+    name: "EuroTechJobs"
+    url: "https://www.eurotechjobs.com/job_search/keyword/{query_encoded}"
+    type: search
+    enabled: true
+    adapter: eurotechjobs
+    auth: none
+    supports_query: true
+    supports_location: false
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  - id: eurotechjobs-remote
+    name: "EuroTechJobs Remote"
+    url: "https://www.eurotechjobs.com/jobs/remote"
+    type: static
+    enabled: true
+    adapter: eurotechjobs
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  # Iberia and Southern Europe tech; keep EU-remote rows.
+  - id: landing-jobs
+    name: "Landing.jobs"
+    url: "https://landing.jobs/jobs?search={query_encoded}"
+    type: search
+    enabled: true
+    adapter: landing_jobs
+    auth: none
+    supports_query: true
+    supports_location: false
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  # English locale. aroundQuery accepts Norway, Remote, Europe.
+  # Often answers bots with an empty 202 — use a real browser.
+  - id: wttj
+    name: "Welcome to the Jungle"
+    url: "https://www.welcometothejungle.com/en/jobs?query={query_encoded}&aroundQuery={location_encoded}"
+    type: search
+    enabled: true
+    adapter: wttj
+    auth: none
+    supports_query: true
+    supports_location: true
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  # Germany/EU remote tech. Public listings; post-filter to developer roles.
+  - id: arbeitnow-remote
+    name: "Arbeitnow Remote"
+    url: "https://www.arbeitnow.com/jobs/locations/remote"
+    type: static
+    enabled: true
+    adapter: arbeitnow
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  # Norway IT (occupation 0.23 = IT utvikling). Oslo market + remote-from-NO.
+  - id: finn-it
+    name: "FINN IT"
+    url: "https://www.finn.no/job/search?q={query_encoded}&occupation=0.23"
+    type: search
+    enabled: true
+    adapter: finn
+    auth: none
+    supports_query: true
+    supports_location: false
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  # ── Enabled: contract / project IT ─────────────────────────────────────
+  - id: arc-dev
+    name: "Arc.dev"
+    url: "https://arc.dev/remote-jobs"
+    type: static
+    enabled: true
+    adapter: arc
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: freelancermap
+    name: "FreelancerMap"
+    url: "https://www.freelancermap.com/projects?query={query_encoded}"
+    type: search
+    enabled: true
+    adapter: freelancermap
+    auth: none
+    supports_query: true
+    supports_location: false
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  - id: freelancermap-remote-eu
+    name: "FreelancerMap Remote EU"
+    url: "https://www.freelancermap.com/projects/remote-for-eu"
+    type: static
+    enabled: true
+    adapter: freelancermap
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  # ── Disabled: Spain-only (Spain-resident remote is common) ─────────────
+  - id: infojobs
+    name: "InfoJobs"
+    url: "https://www.infojobs.net/ofertas-trabajo?keyword={query_encoded}&sortBy=PUBLICATION_DATE"
+    type: search
+    enabled: false
+    adapter: infojobs
+    auth: login
+    supports_query: true
+    supports_location: false
+    posted_within: native
+    work_type: post_filter
+    profile: dedicated
+
+  - id: infojobs-remote
+    name: "InfoJobs Remote"
+    url: "https://www.infojobs.net/ofertas-trabajo?keyword={query_encoded}&teleworkingIds=2&sortBy=PUBLICATION_DATE"
+    type: search
+    enabled: false
+    adapter: infojobs
+    auth: login
+    supports_query: true
+    supports_location: false
+    posted_within: native
+    work_type: url
+    profile: dedicated
+
+  - id: tecnoempleo
+    name: "Tecnoempleo"
+    url: "https://www.tecnoempleo.com/ofertas-trabajo/?te={query_encoded}"
+    type: search
+    enabled: false
+    adapter: tecnoempleo
+    auth: none
+    supports_query: true
+    supports_location: false
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  - id: tecnoempleo-remote
+    name: "Tecnoempleo Remote"
+    url: "https://www.tecnoempleo.com/ofertas-trabajo/?te={query_encoded}&en_remoto=,1,"
+    type: search
+    enabled: false
+    adapter: tecnoempleo
+    auth: none
+    supports_query: true
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: ticjob
+    name: "Ticjob"
+    url: "https://ticjob.es/esp/busqueda"
+    type: static
+    enabled: false
+    adapter: ticjob
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: unsupported
+    profile: shared
+
+  - id: jobfluent-madrid
+    name: "JobFluent Madrid"
+    url: "https://www.jobfluent.com/es/empleos-madrid?q={query_encoded}"
+    type: search
+    enabled: false
+    adapter: jobfluent
+    auth: none
+    supports_query: true
+    supports_location: false
+    posted_within: post_filter
+    work_type: unsupported
+    profile: shared
+
+  - id: jobfluent-barcelona
+    name: "JobFluent Barcelona"
+    url: "https://www.jobfluent.com/es/empleos-barcelona?q={query_encoded}"
+    type: search
+    enabled: false
+    adapter: jobfluent
+    auth: none
+    supports_query: true
+    supports_location: false
+    posted_within: post_filter
+    work_type: unsupported
+    profile: shared
+
+  - id: jobfluent-valencia
+    name: "JobFluent Valencia"
+    url: "https://www.jobfluent.com/es/empleos-valencia?q={query_encoded}"
+    type: search
+    enabled: false
+    adapter: jobfluent
+    auth: none
+    supports_query: true
+    supports_location: false
+    posted_within: post_filter
+    work_type: unsupported
+    profile: shared
+
+  - id: jobfluent-remote
+    name: "JobFluent Remote"
+    url: "https://www.jobfluent.com/es/empleos-remoto?q={query_encoded}"
+    type: search
+    enabled: false
+    adapter: jobfluent
+    auth: none
+    supports_query: true
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: manfred
+    name: "Manfred"
+    url: "https://www.getmanfred.com/ofertas-empleo"
+    type: static
+    enabled: false
+    adapter: manfred
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  - id: michael-page-servicenow
+    name: "Michael Page ServiceNow"
+    url: "https://www.michaelpage.es/jobs/servicenow"
+    type: static
+    enabled: false
+    adapter: michael_page
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  - id: michael-page-fullstack
+    name: "Michael Page Full Stack"
+    url: "https://www.michaelpage.es/jobs/fullstack"
+    type: static
+    enabled: false
+    adapter: michael_page
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  - id: michael-page-react
+    name: "Michael Page React"
+    url: "https://www.michaelpage.es/jobs/react"
+    type: static
+    enabled: false
+    adapter: michael_page
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  - id: michael-page-python
+    name: "Michael Page Python"
+    url: "https://www.michaelpage.es/jobs/python"
+    type: static
+    enabled: false
+    adapter: michael_page
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  # ── Disabled: bot-hostile aggregators ──────────────────────────────────
+  - id: talent-spain
+    name: "Talent.com Spain"
+    url: "https://es.talent.com/jobs?k={query_encoded}&l={location_encoded}"
+    type: search
+    enabled: false
+    adapter: talent
+    auth: none
+    supports_query: true
+    supports_location: true
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  - id: indeed-spain
+    name: "Indeed Spain"
+    url: "https://es.indeed.com/jobs?q={query_encoded}&l={location_encoded}&fromage=14&sort=date"
+    type: search
+    enabled: false
+    adapter: indeed
+    auth: none
+    supports_query: true
+    supports_location: true
+    posted_within: native
+    work_type: post_filter
+    profile: shared
+
+  # ── Disabled: LATAM / low-signal / no public listings ──────────────────
+  - id: get-on-board
+    name: "Get on Board"
+    url: "https://www.getonbrd.com/jobs/programming"
+    type: static
+    enabled: false
+    adapter: getonboard
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: post_filter
+    profile: shared
+
+  - id: remotive-spain
+    name: "Remotive Spain"
+    url: "https://remotive.com/remote-jobs/l-spain"
+    type: static
+    enabled: false
+    adapter: remotive
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: url
+    profile: shared
+
+  - id: hn-jobs
+    name: "Hacker News Jobs"
+    url: "https://news.ycombinator.com/jobs"
+    type: static
+    enabled: false
+    adapter: hn_jobs
+    auth: none
+    supports_query: false
+    supports_location: false
+    posted_within: post_filter
+    work_type: unsupported
+    profile: shared
+
+  # Malt pushes missions after login; there is no public project index to scrape.
+  - id: malt
+    name: "Malt"
+    url: "https://www.malt.com/dashboard/freelancer/"
+    type: static
+    enabled: false
+    adapter: malt
+    auth: login
+    supports_query: false
+    supports_location: false
+    posted_within: unsupported
+    work_type: unsupported
+    profile: dedicated

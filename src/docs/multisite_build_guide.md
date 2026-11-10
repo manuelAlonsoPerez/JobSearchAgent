@@ -4,11 +4,12 @@
 > v1 (LinkedIn Easy Apply) stays in [`v1_build_guide.md`](./v1_build_guide.md). This guide does not
 > reopen triage, CV writing, or Easy Apply fill.
 >
-> **Status:** Parts M1 and M2 are done. `enabled_sites()` reads `sites.yaml`, and
-> `discovery/registry.py` resolves adapter `linkedin`. `run` still uses the LinkedIn
-> command path, refuses to open linkedin.com while that row is blocked, and does not
-> walk the other enabled rows until Part M5. Himalayas and EuroTechJobs have no adapter
-> yet, so `require_adapters(enabled_sites())` names those site ids and stops.
+> **Status:** Parts M1–M3 are done. The registry resolves `linkedin` and `himalayas`.
+> The Himalayas adapter reads the public jobs API and keeps developer roles open to
+> Norway, Spain, or worldwide. `run` still uses the LinkedIn command path, refuses to
+> open linkedin.com while that row is blocked, and does not walk enabled rows until
+> Part M5. EuroTechJobs has no adapter yet, so `require_adapters(enabled_sites())`
+> names `eurotechjobs` and `eurotechjobs-remote` and stops.
 >
 > **How we use this doc:** each **Part** is one work order. You say *"build Part M3"*; I implement
 > that part only. Tick the box when done.
@@ -253,7 +254,7 @@ LinkedIn `run` must still pass its current tests after every part. A part that o
   - The LinkedIn adapter keeps today’s URL builder (`linkedin_search_url`), Easy Apply detection, and external `apply_url`.
 - **Done when:** the registry resolves `linkedin`; a fake adapter is invokable with `query=None` for a static site; LinkedIn unit tests still pass.
 
-### ☐ Part M3 — Himalayas · `CODE`+`BROWSER`
+### ☑ Part M3 — Himalayas · `CODE`+`BROWSER`
 
 - **Goal:** the second site, so the protocol is real. One adapter serves `himalayas`.
 - **Depends on:** M2, F4c.

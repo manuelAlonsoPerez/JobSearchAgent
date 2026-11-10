@@ -11,6 +11,7 @@ from typing import Any, Protocol, TypedDict
 
 from ..config import Site, refuse_linkedin_automation
 from ..models import JobState
+from .himalayas import HimalayasAdapter
 from .linkedin import (
     WORK_TYPE_CODES,
     LinkedInDiscovery,
@@ -178,3 +179,4 @@ def _linkedin_work_type(value: Any) -> str | None:
 
 
 register_adapter(LinkedInAdapter())
+register_adapter(HimalayasAdapter())

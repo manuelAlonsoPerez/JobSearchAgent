@@ -75,8 +75,8 @@ class RegistryTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as caught:
             require_adapters(enabled_sites())
         message = str(caught.exception)
-        self.assertIn("himalayas", message)
-        self.assertIn("eurotechjobs", message)
+        self.assertNotIn("himalayas", message)
+        self.assertIn("eurotechjobs (adapter eurotechjobs)", message)
         self.assertIn("eurotechjobs-remote", message)
 
     def test_static_adapter_accepts_a_skipped_query(self) -> None:

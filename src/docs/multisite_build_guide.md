@@ -4,9 +4,8 @@
 > v1 (LinkedIn Easy Apply) stays in [`v1_build_guide.md`](./v1_build_guide.md). This guide does not
 > reopen triage, CV writing, or Easy Apply fill.
 >
-> **Status:** `src/config/sites.yaml` already carries the enabled set and the per-site fields below.
-> `python -m jobsearchagent run` still opens one LinkedIn session and ignores `enabled`. No M-part
-> is done until its *Done when* passes.
+> **Status:** Part M1 is done. `enabled_sites()` reads `sites.yaml`. `run` still opens one
+> LinkedIn session and does not walk the other enabled rows until Part M5.
 >
 > **How we use this doc:** each **Part** is one work order. You say *"build Part M3"*; I implement
 > that part only. Tick the box when done.
@@ -58,7 +57,7 @@ These answer the prompt’s design questions. Change them here before changing c
 | 7 | Browser | `profile: shared` → `CHROME_PROFILE_DIR`. `profile: dedicated` → `CHROME_PROFILE_DIR/<id>` (reserved; no enabled row uses it yet). First login on a site is manual. Reuse `LINKEDIN_ACTION_DELAY_MS` between page actions on every site. |
 | 8 | Identity | `thread_id = "{id}:{source_job_id}"`, else `"{id}:{canonical listing url}"`. `easy_apply` means “this adapter can fill the form”, which in v2 is LinkedIn only. |
 | 9 | Queries | One `searches.yaml` list. `query_style: phrase` (default) sends the phrase. `query_style: token` sends the first alphanumeric token (`ServiceNow developer` → `servicenow`). |
-| 10 | Order | Interface around the **second** site (We Work Remotely, static, no login), then the CLI loop, then one search-shaped board (EuroTechJobs), then the rest **one adapter at a time**. |
+| 10 | Order | Interface around the **second** site (Himalayas, static, no login), then the CLI loop, then EuroTechJobs, then the rest **one adapter at a time**. |
 
 ### Loop
 
@@ -110,17 +109,21 @@ The first saved row wins. v2 does not merge descriptions.
 
 ## 📋 Enabled set
 
-Taken from `sites.yaml` as it stands. `enabled: false` rows stay in the file.
+The first development set in `sites.yaml` is `himalayas`, `eurotechjobs`, and `eurotechjobs-remote`. LinkedIn stays in the file and is listed under `blocked.sites`, so no command opens linkedin.com until that block is removed. The rows below are the backlog to turn on one adapter at a time. `enabled: false` rows stay in the file.
 
-### On for v2
+### On for the first adapters
 
-| id | Why it is on | Shape |
+`himalayas`, `eurotechjobs`, `eurotechjobs-remote`. LinkedIn is blocked for now.
+
+### Why each row is in the registry
+
+| id | Why it is here | Shape |
 | --- | --- | --- |
 | `linkedin` | Already the v1 path. Do not rename `name: "LinkedIn Jobs"`. | search, login, native month + work type, phrase queries, location |
 | `remoteok` | Remote-only dev index. Static category, no account. | static, post-filter month |
-| `wwr-fullstack` / `wwr-frontend` / `wwr-backend` | **Second site.** Three category pages, one `wwr` adapter. | static, post-filter month |
+| `wwr-fullstack` / `wwr-frontend` / `wwr-backend` | Remote programming categories, one `wwr` adapter. Smaller fit than Himalayas for these profiles. | static, post-filter month |
 | `remotive-software` | Smaller curated remote software list. | static, post-filter month |
-| `himalayas` | Listings often state country eligibility, which triage can read. | static, post-filter month |
+| `himalayas` | **Second site.** Norway-open remote volume for React, TypeScript, full-stack, and frontend. Country list is on the listing. | static, post-filter month |
 | `justremote` | Remote developer category. | static, post-filter month |
 | `working-nomads` | Remote development category. | static, post-filter month |
 | `nodesk` | Remote index, low ceremony. | static, post-filter month |
@@ -184,7 +187,7 @@ sites:
 ```mermaid
 flowchart LR
     M1[M1 enabled sites] --> M2[M2 protocol]
-    M2 --> M3[M3 WWR adapter]
+    M2 --> M3[M3 Himalayas adapter]
     M2 --> M4[M4 dedup and thread id]
     M3 --> M5[M5 CLI loop]
     M4 --> M5
@@ -198,7 +201,7 @@ LinkedIn `run` must still pass its current tests after every part. A part that o
 
 ---
 
-### ☐ Part M1 — enabled-site loader · `CODE`
+### ☑ Part M1 — enabled-site loader · `CODE`
 
 - **Goal:** `load_sites()` grows a typed reader for the rows `run` will walk. No browser.
 - **Depends on:** F1.
@@ -210,7 +213,7 @@ LinkedIn `run` must still pass its current tests after every part. A part that o
   - `id` values are unique. `adapter` is a non-empty slug.
   - `type: static` must have `supports_query: false`.
   - LinkedIn’s `name` remains `"LinkedIn Jobs"`.
-- **Done when:** a unit test loads the real `sites.yaml`; the enabled ids match the table above; a disabled Spain board is absent; a fixture missing `adapter` raises.
+- **Done when:** a unit test loads the real `sites.yaml`; the enabled ids are `himalayas`, `eurotechjobs`, and `eurotechjobs-remote` (LinkedIn stays in the file and is blocked); a disabled Spain board is absent; a fixture missing `adapter` raises.
 
 ### ☐ Part M2 — discovery protocol · `CODE`
 
@@ -247,18 +250,18 @@ LinkedIn `run` must still pass its current tests after every part. A part that o
   - The LinkedIn adapter keeps today’s URL builder (`linkedin_search_url`), Easy Apply detection, and external `apply_url`.
 - **Done when:** the registry resolves `linkedin`; a fake adapter is invokable with `query=None` for a static site; LinkedIn unit tests still pass.
 
-### ☐ Part M3 — We Work Remotely · `CODE`+`BROWSER`
+### ☐ Part M3 — Himalayas · `CODE`+`BROWSER`
 
-- **Goal:** the second site, so the protocol is real. One adapter serves `wwr-fullstack`, `wwr-frontend`, and `wwr-backend`.
+- **Goal:** the second site, so the protocol is real. One adapter serves `himalayas`.
 - **Depends on:** M2, F4c.
 - **Behaviour:**
-  1. Open `site.url` (no query, no location).
-  2. Collect listing links up to `limit` cards that are not `seen`.
-  3. Open each detail. Read title, company, location text, description, and the outbound apply URL.
-  4. `source_job_id` is the stable path slug when present, else empty and dedup falls through to the URL.
+  1. Open `site.url` (no query, no location). Prefer the public jobs API when it returns the same fields a detail page would.
+  2. Collect listings up to `limit` cards that are not `seen`. Keep a row when Norway or Spain is an allowed country, or the role is genuinely worldwide.
+  3. Read title, company, location text, description, and the outbound apply URL.
+  4. `source_job_id` is the stable Himalayas guid or slug when present, else empty and dedup falls through to the URL.
   5. `posted_within: post_filter`: drop listings whose visible date is older than `--month`. No date → keep.
   6. A blocked or empty category logs and returns `[]` (the CLI learns to continue in M5; this part just does not raise).
-- **Done when:** a fixture page (saved HTML or a local server) yields one `JobState` with description and `apply_url`, `easy_apply` is false, and a second call with the same URL is `seen`. A live smoke is optional and manual.
+- **Done when:** a fixture payload yields one `JobState` with description and `apply_url`, `easy_apply` is false, and a second call with the same URL is `seen`. A live smoke is optional and manual.
 
 ### ☐ Part M4 — thread id and cross-site dedup · `CODE`
 
@@ -346,7 +349,7 @@ Build **one adapter per request**, in any order. Each copies M3 (static) or M6 (
 
 - `run --dry-run --limit 15 --max-jobs 80 --month 1` walks **enabled** sites that have an adapter, not only LinkedIn.
 - `--site linkedin` preserves current Easy Apply dry-run behaviour.
-- A WWR (or later) job is stored with `site`, survives dedup, receives JEV location and skills triage, and is queued with `apply_url` because it is not Easy Apply.
+- A Himalayas (or later) job is stored with `site`, survives dedup, receives JEV location and skills triage, and is queued with `apply_url` because it is not Easy Apply.
 - A 403, empty listing, or login wall on one site is logged and the next site runs.
 - Adding a board is a YAML row plus one adapter registered under its slug, not a fork of `cli.py`.
 

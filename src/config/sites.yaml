@@ -5,15 +5,15 @@
 # Target: IT roles that are remote, project/contract, or EMEA.
 # Profiles: ServiceNow, full-stack (React/TS/Python/Node/Java/.NET), AI/RAG/agents.
 #
-# enabled: true  → first multi-site development set only:
-#                  LinkedIn (existing adapter), Himalayas, EuroTechJobs.
+# enabled: true  → first multi-site development set: Himalayas and EuroTechJobs.
 # enabled: false → kept in this file for later. The full previous enabled set
 #                  is copied in sites_extended.yaml.
 #
-# Why these three: Himalayas has the most Norway-open remote jobs for the
-# React / TypeScript / full-stack profiles. EuroTechJobs is the Europe keyword
-# search for ServiceNow, React, full-stack, and Python. LinkedIn stays on as
-# the control. Other boards wait until those two adapters exist.
+# LinkedIn is in blocked.sites for now. Commands that would open linkedin.com
+# refuse to start, so the account is not automated. Himalayas has the most
+# Norway-open remote jobs for the React / TypeScript / full-stack profiles.
+# EuroTechJobs is the Europe keyword search for ServiceNow, React, full-stack,
+# and Python.
 #
 # Per-site fields:
 #   id                 stable slug (thread_id / adapter key)
@@ -46,12 +46,15 @@ blocked:
     - "accenture"
     - "AccentureCareers"
     - "Workopolis"
+    - "linkedin"            # paused: do not automate the account
+    - "LinkedIn Jobs"
   url_patterns:
     - "%glassdoor%"
     - "%google.com/about/careers%"
     - "%google.jobs%"
     - "%accenture%"
     - "%workopolis.com/out%"
+    - "%linkedin.com%"
 
 # ── Blocked SSO domains — cannot authenticate through these ──────────────
 blocked_sso:
@@ -110,15 +113,15 @@ base_urls:
   "Malt": "https://www.malt.com"
 
 sites:
-  # ── Enabled: LinkedIn (existing v1 path — do not rename) ───────────────
-  # Easy Apply is added dynamically by config.linkedin_search_url().
+  # ── LinkedIn is blocked until the account should be automated again ────
+  # Do not rename. Easy Apply is added by config.linkedin_search_url().
   # Keep location explicit: omitting it can fall back to the account region.
   # currentJobId is omitted because it only selects a result card.
   - id: linkedin
     name: "LinkedIn Jobs"
     url: "https://www.linkedin.com/jobs/search/?keywords={query_encoded}&location={location_encoded}&f_TPR=r604800&f_WT=2&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true&sortBy=R"
     type: search
-    enabled: true
+    enabled: false
     adapter: linkedin
     auth: login
     supports_query: true

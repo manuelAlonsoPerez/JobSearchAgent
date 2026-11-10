@@ -334,6 +334,9 @@ def _live_fill_form(
         profiles = load_work_profiles().get("work_profiles", {})
         profile_id = select_profile(state, profiles)
     resume = resolve_cv_path(state, load_profile(profile_id)["profile"])
+    from .config import refuse_linkedin_automation
+
+    refuse_linkedin_automation()
     output_fn(f"Easy Apply modal: profile={profile_id!r} cv={resume}")
     discovery = LinkedInDiscovery(output_fn=output_fn)
     context_manager = browser_session(headless=False)

@@ -108,6 +108,9 @@ class LinkedInScraperSmokeTest:
     def run(self) -> None:
         """Open LinkedIn, scrape remote jobs, and triage them interactively."""
 
+        from ..config import refuse_linkedin_automation
+
+        refuse_linkedin_automation()
         try:
             self._verify_jev()
             with session(headless=False) as context:

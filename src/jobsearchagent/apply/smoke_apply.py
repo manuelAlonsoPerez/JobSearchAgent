@@ -89,6 +89,9 @@ def fill_live_application(
         )
     output_fn(f"Using profile '{selected_profile}' CV: {resume}")
 
+    from ..config import refuse_linkedin_automation
+
+    refuse_linkedin_automation()
     discovery = LinkedInDiscovery(input_fn=input_fn, output_fn=output_fn)
     with session(headless=False) as context:
         page = context.pages[0] if context.pages else context.new_page()

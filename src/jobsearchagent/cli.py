@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 
 from .browser import session as browser_session
-from .config import get_settings, search_queries
+from .config import get_settings, refuse_linkedin_automation, search_queries
 from .database import init_db
 from .discovery.linkedin import (
     POSTED_WITHIN_SECONDS,
@@ -144,6 +144,7 @@ def discover_jobs(
         raise ValueError("limit must be at least 1")
     if max_jobs is not None and max_jobs < 1:
         raise ValueError("max_jobs must be at least 1")
+    refuse_linkedin_automation()
     queries = normalize_search_queries(query, max_tier=max_tier)
     search = filters or SearchFilters(easy_apply=easy_apply_only)
     places = _search_places(locations, search)

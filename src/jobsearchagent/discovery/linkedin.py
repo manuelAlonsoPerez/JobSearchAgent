@@ -327,6 +327,9 @@ class LinkedInDiscovery:
     def ensure_login(self, page: Page) -> None:
         """Reuse the persistent login, allowing only manual authentication."""
 
+        from ..config import refuse_linkedin_automation
+
+        refuse_linkedin_automation()
         self._navigate(page, "https://www.linkedin.com/feed/")
         if not self._requires_login(page):
             self.output("LinkedIn persistent profile is already logged in.")
@@ -757,6 +760,9 @@ def discover(
 ) -> list[JobState]:
     """Run production LinkedIn discovery with the persistent browser profile."""
 
+    from ..config import refuse_linkedin_automation
+
+    refuse_linkedin_automation()
     discovery = LinkedInDiscovery()
     with session(headless=False) as context:
         page = context.pages[0] if context.pages else context.new_page()

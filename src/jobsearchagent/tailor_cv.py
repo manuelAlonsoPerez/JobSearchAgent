@@ -103,6 +103,9 @@ def scrape_linkedin_job(
 ) -> JobState:
     """Scrape one job posting with the persistent Chrome profile."""
 
+    from .config import refuse_linkedin_automation
+
+    refuse_linkedin_automation()
     discovery = LinkedInDiscovery(input_fn=input_fn, output_fn=output_fn)
     with session(headless=False) as context:
         page = context.pages[0] if context.pages else context.new_page()

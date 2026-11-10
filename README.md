@@ -117,6 +117,12 @@ npm run dev
 
 After `npm run build`, `serve` can also host `frontend/dist` at `http://127.0.0.1:8765`.
 
+Playwright search, scrape, and Easy Apply (`run` / `discover`) can get the LinkedIn account
+restricted. To keep the local queue and CV flow without that automation, follow
+[`src/docs/linkedin_restriction_mitigations.md`](src/docs/linkedin_restriction_mitigations.md).
+Other EMEA remote and project IT boards (browse by hand, then `tailor_cv`):
+[`src/docs/emea_remote_job_sources.md`](src/docs/emea_remote_job_sources.md).
+
 ## Search filters
 
 These flags apply to `run`, `discover`, and `linkedin_agent`. Defaults are remote, Easy Apply,
@@ -358,3 +364,5 @@ PYTHONPATH=src python scripts/delete_jobs.py --db-path /path/to/jobsearch.db
 - Wiring `tailor_cv` into `run` / Easy Apply upload.
 
 See `src/docs/v1_build_guide.md` and `src/docs/tailored_cv_guide.md` for remaining phases.
+Account-risk mitigations: `src/docs/linkedin_restriction_mitigations.md`.
+EMEA remote / project boards: `src/docs/emea_remote_job_sources.md`.

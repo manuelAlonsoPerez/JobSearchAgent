@@ -258,6 +258,19 @@ class LinkedInDiscovery:
                 continue
             if self._title_is_excluded(str(state.get("title", ""))):
                 continue
+            if seen(
+                SITE,
+                source_job_id,
+                url,
+                site_id="linkedin",
+                apply_url=str(state.get("apply_url") or ""),
+                company=str(state.get("company") or ""),
+                title=str(state.get("title") or ""),
+                location=str(state.get("location") or ""),
+            ):
+                if stats is not None:
+                    stats["duplicate"] = int(stats.get("duplicate") or 0) + 1
+                continue
             upsert_job(state)
             jobs.append(state)
             self.output(
@@ -486,6 +499,7 @@ class LinkedInDiscovery:
             location=fields["location"],
             employment_type=fields["employment_type"],
             site=SITE,
+            site_id="linkedin",
             raw_description=description,
             easy_apply=easy_apply,
             apply_url=apply_url or canonical_url,

@@ -1,6 +1,7 @@
 """LangGraph wiring for one LinkedIn job (G1).
 
-Thread id is ``linkedin:{source_job_id}`` with a canonical URL fallback.
+Thread id is ``{site_id}:{source_job_id}`` with a canonical URL fallback.
+LinkedIn rows keep the ``linkedin:`` prefix.
 The checkpointer is ``SqliteSaver`` so ``invoke`` can resume after a kill.
 
 Browser pages are not part of ``JobState``. The form node keeps a process-local
@@ -29,7 +30,7 @@ from .apply.form import build_and_answer_form
 from .apply.record import record
 from .apply.submit import LINKEDIN_SITE, classify_browser_error, submit_application
 from .browser import session as browser_session
-from .config import load_work_profiles
+from .config import load_work_profiles, site_id_for_name
 from .database import get_checkpointer
 from .discovery.linkedin import LinkedInDiscovery
 from .models import JobState
@@ -56,17 +57,39 @@ class _BrowserHold:
 
 
 def thread_id_for(state: Mapping[str, Any]) -> str:
-    """Return ``linkedin:{job_id}`` or ``linkedin:{canonical_url}``."""
+    """Return ``{site_id}:{source_job_id}`` or ``{site_id}:{canonical url}``.
 
-    job_id = str(state.get("source_job_id") or "").strip()
+    LinkedIn jobs stay ``linkedin:{id}``. A numeric id parsed from a LinkedIn
+    URL is still the suffix, so existing checkpoint rows are unchanged.
+    """
+
+    site_id = _thread_site_id(state)
     url = str(state.get("url") or "").strip()
-    if not job_id and url:
+    job_id = str(state.get("source_job_id") or "").strip()
+    if site_id == "linkedin" and not job_id and url:
         job_id = extract_linkedin_job_id(url) or ""
     if job_id:
-        return f"linkedin:{job_id}"
+        return f"{site_id}:{job_id}"
     if url:
-        return f"linkedin:{canonicalize_url(url)}"
+        return f"{site_id}:{canonicalize_url(url)}"
     raise ValueError("A job seed needs source_job_id or url to build thread_id")
+
+
+def _thread_site_id(state: Mapping[str, Any]) -> str:
+    explicit = str(state.get("site_id") or "").strip()
+    if explicit:
+        return explicit
+    name = str(state.get("site") or "").strip()
+    if name:
+        found = site_id_for_name(name)
+        if found:
+            return found
+    url = str(state.get("url") or "")
+    if extract_linkedin_job_id(url) or "linkedin.com" in url.casefold():
+        return "linkedin"
+    if name:
+        raise ValueError(f"Cannot build a thread id for site {name!r} without a site_id")
+    raise ValueError("A job seed needs a site_id to build thread_id")
 
 
 def build_graph(

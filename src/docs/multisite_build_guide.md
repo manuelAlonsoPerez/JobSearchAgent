@@ -4,12 +4,11 @@
 > v1 (LinkedIn Easy Apply) stays in [`v1_build_guide.md`](./v1_build_guide.md). This guide does not
 > reopen triage, CV writing, or Easy Apply fill.
 >
-> **Status:** Parts M1–M3 are done. The registry resolves `linkedin` and `himalayas`.
-> The Himalayas adapter reads the public jobs API and keeps developer roles open to
-> Norway, Spain, or worldwide. `run` still uses the LinkedIn command path, refuses to
-> open linkedin.com while that row is blocked, and does not walk enabled rows until
-> Part M5. EuroTechJobs has no adapter yet, so `require_adapters(enabled_sites())`
-> names `eurotechjobs` and `eurotechjobs-remote` and stops.
+> **Status:** Parts M1–M4 are done. Thread ids are `{site_id}:{source_job_id}`, and
+> LinkedIn checkpoints stay `linkedin:{id}`. A listing URL, an absolute apply URL, or
+> the same company, title, and location is one saved job. `run` still uses the LinkedIn
+> command path, refuses to open linkedin.com while that row is blocked, and does not
+> walk enabled rows until Part M5. EuroTechJobs has no adapter yet.
 >
 > **How we use this doc:** each **Part** is one work order. You say *"build Part M3"*; I implement
 > that part only. Tick the box when done.
@@ -267,7 +266,7 @@ LinkedIn `run` must still pass its current tests after every part. A part that o
   6. A blocked or empty category logs and returns `[]` (the CLI learns to continue in M5; this part just does not raise).
 - **Done when:** a fixture payload yields one `JobState` with description and `apply_url`, `easy_apply` is false, and a second call with the same URL is `seen`. A live smoke is optional and manual.
 
-### ☐ Part M4 — thread id and cross-site dedup · `CODE`
+### ☑ Part M4 — thread id and cross-site dedup · `CODE`
 
 - **Goal:** checkpoints and SQLite survive more than one board.
 - **Depends on:** F3, G1, M2.

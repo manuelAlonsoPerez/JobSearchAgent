@@ -232,6 +232,18 @@ def enabled_sites() -> list[Site]:
     ]
 
 
+def site_id_for_name(name: str) -> str | None:
+    """Return the registry id for a display name or id, if one exists."""
+
+    needle = name.strip().casefold()
+    if not needle:
+        return None
+    for site in parse_sites(load_sites()):
+        if site.name.casefold() == needle or site.id.casefold() == needle:
+            return site.id
+    return None
+
+
 def site_by_id(site_id: str) -> Site:
     """Return one registry row, including a disabled or blocked site."""
 

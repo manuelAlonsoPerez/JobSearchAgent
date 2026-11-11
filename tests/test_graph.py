@@ -32,6 +32,30 @@ class ThreadIdTests(unittest.TestCase):
     def test_prefers_source_job_id(self) -> None:
         self.assertEqual(thread_id_for(_seed()), "linkedin:123")
 
+    def test_other_site_keeps_its_own_prefix(self) -> None:
+        thread_id = thread_id_for(
+            {
+                "site_id": "wwr-fullstack",
+                "site": "We Work Remotely Full Stack",
+                "source_job_id": "remote-react-1",
+                "url": "https://weworkremotely.com/remote-jobs/remote-react-1",
+            }
+        )
+        self.assertEqual(thread_id, "wwr-fullstack:remote-react-1")
+        self.assertFalse(thread_id.startswith("linkedin:"))
+
+    def test_other_site_without_source_id_uses_the_canonical_url(self) -> None:
+        thread_id = thread_id_for(
+            {
+                "site": "We Work Remotely Full Stack",
+                "url": "https://weworkremotely.com/remote-jobs/remote-react-1?ref=1",
+            }
+        )
+        self.assertEqual(
+            thread_id,
+            "wwr-fullstack:https://weworkremotely.com/remote-jobs/remote-react-1",
+        )
+
     def test_falls_back_to_canonical_url(self) -> None:
         self.assertEqual(
             thread_id_for(

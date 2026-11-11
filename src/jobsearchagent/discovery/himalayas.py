@@ -106,7 +106,17 @@ class HimalayasAdapter:
                     continue
                 url = str(state["url"])
                 source_job_id = str(state.get("source_job_id") or "")
-                if seen(site.name, source_job_id, url, path=self.database_path):
+                if seen(
+                    site.name,
+                    source_job_id,
+                    url,
+                    path=self.database_path,
+                    site_id=site.id,
+                    apply_url=str(state.get("apply_url") or ""),
+                    company=str(state.get("company") or ""),
+                    title=str(state.get("title") or ""),
+                    location=str(state.get("location") or ""),
+                ):
                     continue
                 upsert_job(state, path=self.database_path)
                 jobs.append(state)
@@ -191,6 +201,7 @@ def _job_state(
         location=_location_text(restrictions),
         employment_type=str(listing.get("employmentType") or "").strip(),
         site=site.name,
+        site_id=site.id,
         raw_description=description,
         easy_apply=False,
         apply_url=apply_url or canonicalize_url(listing_url),

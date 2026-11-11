@@ -302,8 +302,25 @@ def _log_triage_feedback(
     )
 
 
+def _is_linkedin_job(state: Mapping[str, Any]) -> bool:
+    """True for the LinkedIn row, including seeds that only carry its name."""
+
+    site_id = str(state.get("site_id") or "").strip()
+    if site_id:
+        return site_id == "linkedin"
+    name = str(state.get("site") or "").strip()
+    if name:
+        found = site_id_for_name(name)
+        if found:
+            return found == "linkedin"
+        return False
+    url = str(state.get("url") or "")
+    return bool(extract_linkedin_job_id(url) or "linkedin.com" in url.casefold())
+
+
 def _route_start(state: JobState) -> Literal["triage", "record"]:
-    if state.get("easy_apply") is False:
+    # LinkedIn's external ATS stays a direct record. Every other board is triaged.
+    if state.get("easy_apply") is False and _is_linkedin_job(state):
         return "record"
     return "triage"
 
@@ -311,7 +328,11 @@ def _route_start(state: JobState) -> Literal["triage", "record"]:
 def _route_after_triage(state: JobState) -> Literal["requirements", "record"]:
     if state.get("apply_status") == "failed":
         return "record"
-    if state.get("outcome") == "accept":
+    if (
+        _is_linkedin_job(state)
+        and state.get("easy_apply") is not False
+        and state.get("outcome") == "accept"
+    ):
         return "requirements"
     return "record"
 
@@ -321,18 +342,32 @@ def _terminal_status(state: JobState) -> dict[str, Any]:
 
     if state.get("apply_status"):
         return {}
-    if state.get("easy_apply") is False:
-        return {
-            "apply_status": "external",
-            "apply_url": state.get("apply_url") or state.get("url"),
-            "review_reason": (
-                state.get("review_reason")
-                or "External application requires manual review."
-            ),
-            "site": state.get("site") or LINKEDIN_SITE,
-        }
+    site = state.get("site") or LINKEDIN_SITE
+    if _is_linkedin_job(state):
+        if state.get("easy_apply") is False:
+            return {
+                "apply_status": "external",
+                "apply_url": state.get("apply_url") or state.get("url"),
+                "review_reason": (
+                    state.get("review_reason")
+                    or "External application requires manual review."
+                ),
+                "site": site,
+            }
+        if state.get("outcome") == "reject":
+            return {"apply_status": "skipped", "site": site}
+        if state.get("outcome") == "needs_confirmation":
+            return {
+                "apply_status": "manual",
+                "review_reason": (
+                    state.get("review_reason")
+                    or "Candidate fact requires confirmation."
+                ),
+                "site": site,
+            }
+        return {"site": site}
     if state.get("outcome") == "reject":
-        return {"apply_status": "skipped", "site": state.get("site") or LINKEDIN_SITE}
+        return {"apply_status": "skipped", "site": site}
     if state.get("outcome") == "needs_confirmation":
         return {
             "apply_status": "manual",
@@ -340,9 +375,20 @@ def _terminal_status(state: JobState) -> dict[str, Any]:
                 state.get("review_reason")
                 or "Candidate fact requires confirmation."
             ),
-            "site": state.get("site") or LINKEDIN_SITE,
+            "apply_url": state.get("apply_url") or state.get("url"),
+            "site": site,
         }
-    return {"site": state.get("site") or LINKEDIN_SITE}
+    if state.get("outcome") == "accept":
+        return {
+            "apply_status": "external",
+            "apply_url": state.get("apply_url") or state.get("url"),
+            "review_reason": (
+                state.get("review_reason")
+                or "External application requires manual review."
+            ),
+            "site": site,
+        }
+    return {"site": site}
 
 
 def _live_fill_form(

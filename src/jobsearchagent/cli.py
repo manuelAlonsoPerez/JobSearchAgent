@@ -1,13 +1,14 @@
-"""G2: ApplyPilot-style CLI batch runner.
+"""G2: batch runner for the enabled sites in ``sites.yaml``.
 
-``python -m jobsearchagent discover|run`` walks LinkedIn search and, for
-``run``, the G1 graph through record. Counts print at the end.
+``python -m jobsearchagent discover|run`` walks each enabled site that has
+an adapter. LinkedIn keeps its current search. ``run`` then hands each new
+job to the G1 graph. Counts print at the end.
 """
 
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,7 @@ from typing import Any
 import httpx
 
 from .browser import session as browser_session
-from .config import get_settings, refuse_linkedin_automation, search_queries
+from .config import Site, enabled_sites, get_settings, refuse_linkedin_automation, search_queries
 from .database import init_db
 from .discovery.linkedin import (
     POSTED_WITHIN_SECONDS,
@@ -26,6 +27,9 @@ from .discovery.linkedin import (
     parse_month_count,
     posted_window_seconds,
 )
+from .discovery.loop import SearchUnit, search_units, select_sites, skip_reason
+from .discovery.registry import SearchFilters as AdapterFilters
+from .discovery.registry import adapter_for, discover_with_adapter
 from .apply.record import record
 from .graph import invoke_job
 from .models import JobState
@@ -146,42 +150,252 @@ def discover_jobs(
         raise ValueError("max_jobs must be at least 1")
     refuse_linkedin_automation()
     queries = normalize_search_queries(query, max_tier=max_tier)
+    init_db(database_path)
+    stats: dict[str, int] = {"duplicate": 0}
+    with browser_session(headless=False) as context:
+        page = context.pages[0] if context.pages else context.new_page()
+        jobs = _collect_linkedin(
+            page,
+            queries,
+            locations,
+            limit=limit,
+            easy_apply_only=easy_apply_only,
+            filters=filters,
+            max_jobs=max_jobs,
+            collected=0,
+            output_fn=output_fn,
+            input_fn=input_fn,
+            stats=stats,
+        )
+    return DiscoverResult(jobs=jobs, duplicate=int(stats.get("duplicate") or 0))
+
+
+def discover_enabled_sites(
+    query: str | Sequence[str] | None,
+    locations: Sequence[str],
+    *,
+    limit: int = 20,
+    easy_apply_only: bool = True,
+    filters: SearchFilters | None = None,
+    database_path: str | Path | None = None,
+    output_fn: Callable[[str], None] = _emit,
+    input_fn: Callable[[str], str] = input,
+    max_tier: int | None = None,
+    max_jobs: int | None = None,
+    site_ids: Sequence[str] | None = None,
+    skip_site_ids: Sequence[str] | None = None,
+    month: int | None = None,
+    work_type: str | None = None,
+    sites: Sequence[Site] | None = None,
+    session_fn: Callable[..., Any] | None = None,
+    adapters: Mapping[str, Any] | None = None,
+) -> DiscoverResult:
+    """Walk enabled sites. A missing adapter or a site error does not stop the run."""
+
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+    if max_jobs is not None and max_jobs < 1:
+        raise ValueError("max_jobs must be at least 1")
+    queries = normalize_search_queries(query, max_tier=max_tier)
+    places = _locations(locations)
+    chosen, missing = select_sites(
+        list(sites) if sites is not None else enabled_sites(),
+        list(site_ids) if site_ids else None,
+        list(skip_site_ids) if skip_site_ids else None,
+    )
+    for site_id in missing:
+        output_fn(f"{site_id} skipped: it is not in the enabled set.")
+    runnable: list[tuple[Site, Any]] = []
+    for site in chosen:
+        reason = skip_reason(site, month=month, work_type=work_type)
+        if reason:
+            output_fn(reason)
+            continue
+        adapter = _adapter_for_run(site, adapters)
+        if adapter is None:
+            output_fn(
+                f"{site.id} skipped: no discovery adapter registered "
+                f"for '{site.adapter}'."
+            )
+            continue
+        if site.adapter == "linkedin":
+            try:
+                refuse_linkedin_automation()
+            except RuntimeError as exc:
+                output_fn(f"{site.id} failed: {exc} Continuing with the next site.")
+                continue
+        runnable.append((site, adapter))
+    if not runnable:
+        return DiscoverResult()
+
+    init_db(database_path)
+    output_fn(
+        "Walking "
+        + ", ".join(site.id for site, _adapter in runnable)
+        + f" (up to {limit} new jobs per unit"
+        + (f", stop after {max_jobs}" if max_jobs is not None else "")
+        + ")"
+    )
+    stats: dict[str, int] = {"duplicate": 0}
+    jobs: list[JobState] = []
+    opener = session_fn or browser_session
+    with opener(headless=False) as context:
+        page = context.pages[0] if context.pages else context.new_page()
+        for site, adapter in runnable:
+            if max_jobs is not None and len(jobs) >= max_jobs:
+                output_fn(f"Reached --max-jobs {max_jobs}; stopping discovery.")
+                break
+            try:
+                jobs.extend(
+                    _discover_site(
+                        site,
+                        adapter,
+                        page,
+                        queries,
+                        places,
+                        limit=limit,
+                        easy_apply_only=easy_apply_only,
+                        filters=filters,
+                        month=month,
+                        work_type=work_type,
+                        max_jobs=max_jobs,
+                        collected=len(jobs),
+                        output_fn=output_fn,
+                        input_fn=input_fn,
+                        stats=stats,
+                    )
+                )
+            except Exception as exc:
+                output_fn(
+                    f"{site.id} failed: {exc} Continuing with the next site."
+                )
+    return DiscoverResult(jobs=jobs, duplicate=int(stats.get("duplicate") or 0))
+
+
+def _collect_linkedin(
+    page: Any,
+    queries: Sequence[str],
+    locations: Sequence[str],
+    *,
+    limit: int,
+    easy_apply_only: bool,
+    filters: SearchFilters | None,
+    max_jobs: int | None,
+    collected: int,
+    output_fn: Callable[[str], None],
+    input_fn: Callable[[str], str],
+    stats: dict[str, int],
+) -> list[JobState]:
+    """Run today's LinkedIn query × location loop on an open page."""
+
     search = filters or SearchFilters(easy_apply=easy_apply_only)
     places = _search_places(locations, search)
     pairs = [(item, place) for item in queries for place in places]
-    cap = (
-        f", stop after {max_jobs} new jobs" if max_jobs is not None else ""
-    )
+    cap = f", stop after {max_jobs} new jobs" if max_jobs is not None else ""
     output_fn(
         f"{len(queries)} search query(ies) × {len(places)} location(s) "
         f"({len(pairs)} LinkedIn searches, up to {limit} new jobs each{cap})"
     )
-    init_db(database_path)
-    stats: dict[str, int] = {"duplicate": 0}
     discovery = LinkedInDiscovery(input_fn=input_fn, output_fn=output_fn)
+    discovery.ensure_login(page)
     jobs: list[JobState] = []
-    with browser_session(headless=False) as context:
-        page = context.pages[0] if context.pages else context.new_page()
-        discovery.ensure_login(page)
-        for index, (search_query, location) in enumerate(pairs):
-            search_limit = jobs_this_search(limit, len(jobs), max_jobs)
-            if search_limit < 1:
-                output_fn(f"Reached --max-jobs {max_jobs}; stopping discovery.")
-                break
-            place_label = location or "geoId"
-            output_fn(
-                f"Query {index + 1}/{len(pairs)}: {search_query!r} ({place_label})"
-            )
-            found = discovery.discover_with_page(
-                page,
-                search_query,
-                location,
-                search_limit,
-                filters=search,
-                stats=stats,
-            )
-            jobs.extend(found)
-    return DiscoverResult(jobs=jobs, duplicate=int(stats.get("duplicate") or 0))
+    for index, (search_query, location) in enumerate(pairs):
+        search_limit = jobs_this_search(limit, collected + len(jobs), max_jobs)
+        if search_limit < 1:
+            output_fn(f"Reached --max-jobs {max_jobs}; stopping discovery.")
+            break
+        place_label = location or "geoId"
+        output_fn(
+            f"Query {index + 1}/{len(pairs)}: {search_query!r} ({place_label})"
+        )
+        found = discovery.discover_with_page(
+            page,
+            search_query,
+            location,
+            search_limit,
+            filters=search,
+            stats=stats,
+        )
+        jobs.extend(found)
+    return jobs
+
+
+def _discover_site(
+    site: Site,
+    adapter: Any,
+    page: Any,
+    queries: Sequence[str],
+    locations: Sequence[str],
+    *,
+    limit: int,
+    easy_apply_only: bool,
+    filters: SearchFilters | None,
+    month: int | None,
+    work_type: str | None,
+    max_jobs: int | None,
+    collected: int,
+    output_fn: Callable[[str], None],
+    input_fn: Callable[[str], str],
+    stats: dict[str, int],
+) -> list[JobState]:
+    if site.adapter == "linkedin":
+        return _collect_linkedin(
+            page,
+            queries,
+            locations,
+            limit=limit,
+            easy_apply_only=easy_apply_only,
+            filters=filters,
+            max_jobs=max_jobs,
+            collected=collected,
+            output_fn=output_fn,
+            input_fn=input_fn,
+            stats=stats,
+        )
+    found: list[JobState] = []
+    units = search_units(site, list(queries), list(locations))
+    output_fn(f"{site.id}: {len(units)} search unit(s)")
+    for unit in units:
+        search_limit = jobs_this_search(limit, collected + len(found), max_jobs)
+        if search_limit < 1:
+            output_fn(f"Reached --max-jobs {max_jobs}; stopping discovery.")
+            break
+        _log_unit(output_fn, site.id, unit)
+        batch = discover_with_adapter(
+            adapter,
+            page,
+            site,
+            unit.query,
+            unit.location,
+            search_limit,
+            _adapter_filters(month, work_type),
+        )
+        found.extend(batch[:search_limit])
+    return found
+
+
+def _adapter_filters(month: int | None, work_type: str | None) -> AdapterFilters:
+    filters: AdapterFilters = {}
+    if month is not None:
+        filters["month"] = month
+    if work_type:
+        filters["work_type"] = work_type
+    return filters
+
+
+def _adapter_for_run(site: Site, adapters: Mapping[str, Any] | None) -> Any | None:
+    if adapters is not None:
+        return adapters.get(site.adapter)
+    try:
+        return adapter_for(site.adapter, site_id=site.id)
+    except RuntimeError:
+        return None
+
+
+def _log_unit(output_fn: Callable[[str], None], site_id: str, unit: SearchUnit) -> None:
+    query = unit.query if unit.query is not None else "no query"
+    location = unit.location if unit.location is not None else "no location"
+    output_fn(f"  {site_id}: {query} / {location}")
 
 
 def run_batch(
@@ -200,6 +414,13 @@ def run_batch(
     skip_preflight: bool = False,
     max_tier: int | None = None,
     max_jobs: int | None = None,
+    site_ids: Sequence[str] | None = None,
+    skip_site_ids: Sequence[str] | None = None,
+    month: int | None = None,
+    work_type: str | None = None,
+    sites: Sequence[Site] | None = None,
+    session_fn: Callable[..., Any] | None = None,
+    adapters: Mapping[str, Any] | None = None,
 ) -> RunCounts:
     """Discover jobs, run the G1 graph on each, and return G2 counts."""
 
@@ -207,18 +428,39 @@ def run_batch(
         _preflight_jev(output_fn)
     counts = RunCounts()
     queries = normalize_search_queries(query, max_tier=max_tier)
-    result = (discover_fn or discover_jobs)(
-        queries,
-        locations,
-        limit=limit,
-        easy_apply_only=easy_apply_only,
-        filters=filters,
-        database_path=database_path,
-        output_fn=output_fn,
-        input_fn=input_fn,
-        max_tier=max_tier,
-        max_jobs=max_jobs,
-    )
+    if discover_fn is not None:
+        result = discover_fn(
+            queries,
+            locations,
+            limit=limit,
+            easy_apply_only=easy_apply_only,
+            filters=filters,
+            database_path=database_path,
+            output_fn=output_fn,
+            input_fn=input_fn,
+            max_tier=max_tier,
+            max_jobs=max_jobs,
+        )
+    else:
+        result = discover_enabled_sites(
+            queries,
+            locations,
+            limit=limit,
+            easy_apply_only=easy_apply_only,
+            filters=filters,
+            database_path=database_path,
+            output_fn=output_fn,
+            input_fn=input_fn,
+            max_tier=max_tier,
+            max_jobs=max_jobs,
+            site_ids=site_ids,
+            skip_site_ids=skip_site_ids,
+            month=month,
+            work_type=work_type,
+            sites=sites,
+            session_fn=session_fn,
+            adapters=adapters,
+        )
     counts.discovered = len(result.jobs)
     counts.duplicate = result.duplicate
     if not result.jobs:
@@ -261,14 +503,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="jobsearchagent",
         description=(
-            "Discover LinkedIn jobs and run the Easy Apply graph. "
-            "Default is dry-run: fill and stop at Review."
+            "Discover jobs on the enabled sites and run the apply graph. "
+            "Default is dry-run: fill LinkedIn Easy Apply and stop at Review."
         ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     for name, help_text in (
-        ("discover", "Search LinkedIn and persist unseen jobs."),
-        ("run", "Discover, then walk each job through the apply graph."),
+        ("discover", "Search the enabled sites and persist unseen jobs."),
+        ("run", "Discover, then walk each new job through the apply graph."),
     ):
         sub = subparsers.add_parser(name, help=help_text)
         _add_shared_flags(sub)
@@ -322,7 +564,7 @@ def main(
         max_tier=arguments.tier,
     )
     if arguments.command == "discover":
-        result = (discover_fn or discover_jobs)(
+        result = (discover_fn or discover_enabled_sites)(
             queries,
             locations or _locations(None),
             limit=arguments.limit,
@@ -332,6 +574,10 @@ def main(
             output_fn=output_fn,
             max_tier=arguments.tier,
             max_jobs=arguments.max_jobs,
+            site_ids=arguments.site_ids,
+            skip_site_ids=arguments.skip_site_ids,
+            month=arguments.month,
+            work_type=arguments.work_type,
         )
         for index, job in enumerate(result.jobs, start=1):
             output_fn(
@@ -359,6 +605,10 @@ def main(
         skip_preflight=discover_fn is not None,
         max_tier=arguments.tier,
         max_jobs=arguments.max_jobs,
+        site_ids=arguments.site_ids,
+        skip_site_ids=arguments.skip_site_ids,
+        month=arguments.month,
+        work_type=arguments.work_type,
     )
     output_fn("")
     output_fn(format_counts(counts))
@@ -432,7 +682,7 @@ def _add_shared_flags(parser: argparse.ArgumentParser) -> None:
         "--limit",
         type=int,
         default=20,
-        help="Maximum new jobs per query and location. Default: 20.",
+        help="Maximum new jobs per search unit. Default: 20.",
     )
     parser.add_argument(
         "--max-jobs",
@@ -441,8 +691,25 @@ def _add_shared_flags(parser: argparse.ArgumentParser) -> None:
         default=None,
         help=(
             "Optional cap on new jobs for the whole run. "
-            "Omit to walk every search."
+            "Omit to walk every search unit."
         ),
+    )
+    parser.add_argument(
+        "--site",
+        action="append",
+        dest="site_ids",
+        default=None,
+        help=(
+            "Enabled site id to include. Repeat to name several. "
+            "Omit to walk every enabled site."
+        ),
+    )
+    parser.add_argument(
+        "--skip-site",
+        action="append",
+        dest="skip_site_ids",
+        default=None,
+        help="Enabled site id to leave out of this run. Repeatable.",
     )
     parser.add_argument(
         "--dry-run",

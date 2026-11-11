@@ -1,12 +1,23 @@
 # EMEA remote and project IT sources
 
-Where to look instead of automating LinkedIn, for **remote IT** roles that are realistically open from Oslo (EEA), with an initial focus on **EMEA**, and a bias toward boards where **project / contract / remote collaboration** is a normal hiring mode — not only permanent “remote-first” jobs.
-
-This is a source list for **you** (and later, for a non-LinkedIn discovery vertical). The agent today only drives LinkedIn. Do **not** point Playwright at these sites. Most of them forbid scraping in their terms the same way LinkedIn does. Use them in a normal browser; keep the local queue and `tailor_cv` for CVs.
+Where to look for **remote IT** roles that are realistically open from Oslo (EEA), with an initial focus on **EMEA**, and a bias toward boards where **project / contract / remote collaboration** is a normal hiring mode — not only permanent “remote-first” jobs.
 
 Profiles this list is aimed at: ServiceNow, full-stack / frontend, AI / agents. Markets already in this repo: Norway + truly remote, plus Spain/EU listings in `sites.yaml`.
 
-## How to use with the agent today
+## What `run` reads today
+
+[`multisite_build_guide.md`](./multisite_build_guide.md) decides which rows the agent opens. Enabled now:
+
+| id | Board | How the run reads it |
+| --- | --- | --- |
+| `remoteok` | RemoteOK developer jobs | One JSON feed. Drops listings older than `--month`. |
+| `himalayas` | Himalayas developer jobs | One feed. Keeps Norway, Spain, or worldwide. |
+| `eurotechjobs` | EuroTechJobs keyword search | One token per query (`ServiceNow developer` → `servicenow`). |
+| `eurotechjobs-remote` | EuroTechJobs remote category | The category page once. |
+
+LinkedIn stays blocked. Every other board below is still a page you open yourself. Do not enable its YAML row until that adapter is the Part M7 you asked for.
+
+## How to use a board the agent does not read yet
 
 1. Open the board in a **normal** browser. Filter to remote, Europe / EMEA / EU timezone, and contract or freelance when the site has that toggle.
 2. Drop roles that require UK-only right-to-work, US time zones only, or residence in a country you will not work from. “EMEA” on a US company often still means “UK or UAE office.”
@@ -14,11 +25,9 @@ Profiles this list is aimed at: ServiceNow, full-stack / frontend, AI / agents. 
 4. Generate the CV with `python -m jobsearchagent.tailor_cv` when the row has `profile_id` and `raw_description`.
 5. Apply on that site by hand with the PDF.
 
-`src/config/sites.yaml` already names several of these boards as **planned** search URLs. That is not a live scraper. A future vertical would need an official API or a human-paste workflow — not a LinkedIn-style bot.
-
 ## The 15 boards
 
-Ranked for this search: EMEA-reachable IT, then how often they carry **projects / contracts / freelance missions**, then signal-to-noise for ServiceNow / full-stack / AI.
+Ranked for this search: EMEA-reachable IT, then how often they carry **projects / contracts / freelance missions**, then signal-to-noise for ServiceNow / full-stack / AI. Himalayas and EuroTechJobs are already in the enabled set above. The other rows in this table are still manual.
 
 | # | Board | URL | Why it is on the list | Typical work |
 | --- | --- | --- | --- | --- |
@@ -64,20 +73,19 @@ Worth a bookmark once the list above is a habit. They are either country-local, 
 
 Skip as a primary source: Upwork/Fiverr (not EMEA-native, race-to-bottom), generic US remote boards without a Europe filter, and LinkedIn automation (see the restriction guide).
 
-## Do not automate these yet
+## Boards that stay manual
 
-Same rule as LinkedIn: a script that searches, copies listings, or fills apply forms is usually against that site’s terms and can get the **account** on that site closed.
+A row stays a page you open yourself until the build guide turns it on. Malt stays off (marketplace login and an apply form this phase does not fill). Spain-only boards stay off. LinkedIn stays blocked: see the restriction guide before any command is pointed at linkedin.com.
 
-Allowed with this repo right now:
+For a board the agent does not read yet:
 
 - Browse and apply as a person
 - Paste a description you copied yourself
 - Local `#review` / `#jobs` and `tailor_cv`
 
-Not allowed as a “mitigation”: Playwright against Malt, freelancermap, WWR, or any other row in the table.
-
 ## Related docs
 
-- [LinkedIn restriction mitigations](./linkedin_restriction_mitigations.md) — stop LinkedIn automation; keep the local CV loop
-- [README](../../README.md) — review UI and `tailor_cv`
-- `src/config/sites.yaml` — planned board URLs (Spain + remote-first), not a live multi-site runner
+- [Multi-site build guide](./multisite_build_guide.md) — which rows `run` walks, and the next adapter
+- [LinkedIn restriction mitigations](./linkedin_restriction_mitigations.md) — keep Playwright off linkedin.com
+- [README](../../README.md) — `run`, the review UI, and `tailor_cv`
+- `src/config/sites.yaml` — the registry `run` reads. `sites_extended.yaml` is the backup and is not an input.

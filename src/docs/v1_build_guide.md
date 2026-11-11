@@ -3,7 +3,7 @@
 > Implementation plan for the MVP agreed in [`architechture_prompt.md`](./architechture_prompt.md).
 > Companion: [`jev_ollama_agent_guide.md`](./jev_ollama_agent_guide.md) for the decision models.
 > Tailored CVs: [`tailored_cv_guide.md`](./tailored_cv_guide.md) (standalone agent first; not on `run` yet).
-> Multi-site discovery: [`multisite_build_guide.md`](./multisite_build_guide.md) (after v1; `run` is still LinkedIn-only).
+> Multi-site discovery: [`multisite_build_guide.md`](./multisite_build_guide.md). That guide is the current `run`. This document stays the LinkedIn Easy Apply work order.
 >
 > **MVP override (October 2026):** LinkedIn replaces InfoJobs as the first production vertical
 > slice. Where the architecture document still names InfoJobs as the MVP site, this guide is

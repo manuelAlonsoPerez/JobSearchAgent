@@ -3,6 +3,8 @@
 > Companion to [`architechture_prompt.md`](./architechture_prompt.md). This guide shows how to build
 > the **JEV / System One decision agents** that power triage, requirements, fit-scoring, form-answering,
 > and validation in the **Job Search Agent** — running **fully locally on Ollama, no tokens**.
+> Which sites `run` walks is [`multisite_build_guide.md`](./multisite_build_guide.md). This guide
+> does not change that loop.
 
 ---
 

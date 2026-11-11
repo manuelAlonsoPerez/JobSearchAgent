@@ -14,9 +14,11 @@ In this repo that means:
 
 | Command / step | Talks to LinkedIn? | Status |
 | --- | --- | --- |
-| `python -m jobsearchagent run` | Yes: search, scrape listings, fill Easy Apply, Save | Stop |
-| `python -m jobsearchagent discover` | Yes: search and scrape listings | Stop |
+| `python -m jobsearchagent run` | No, while `linkedin` is in `blocked.sites` and its row is `enabled: false`. It walks RemoteOK, Himalayas, and EuroTechJobs. | Keep for those boards |
+| `python -m jobsearchagent discover` | Same as `run`: enabled sites only, and it refuses before opening linkedin.com. | Keep for those boards |
 | `python -m jobsearchagent.linkedin_agent` | Yes | Stop |
+| `python -m jobsearchagent.discovery.linkedin_smoke` | Yes | Stop |
+| `python -m jobsearchagent.apply.agent` | Yes: Easy Apply | Stop |
 | `tailor_cv` when SQLite already has `raw_description` | No | Keep |
 | `tailor_cv --url …` if the description is missing | Yes: opens Chromium and scrapes the posting | Stop / paste the text instead |
 | Local UI (`serve` + `frontend`) Rejected / Applied / `#jobs` | No | Keep |
@@ -28,13 +30,15 @@ In this repo that means:
 
 ### 1. Stop LinkedIn automation
 
-Do not run:
+Do not run the commands that still open linkedin.com:
 
 ```bash
-PYTHONPATH=src python -m jobsearchagent run …
-PYTHONPATH=src python -m jobsearchagent discover …
 PYTHONPATH=src python -m jobsearchagent.linkedin_agent …
+PYTHONPATH=src python -m jobsearchagent.discovery.linkedin_smoke …
+PYTHONPATH=src python -m jobsearchagent.apply.agent …
 ```
+
+`run` and `discover` refuse to start a LinkedIn search while `linkedin` is listed under `blocked.sites` and the LinkedIn row is `enabled: false`. Leave both in place. Removing only one of them is not enough.
 
 Do not pass `--live`. Do not try to continue past a LinkedIn login checkpoint, CAPTCHA, or security challenge in the Playwright window.
 
@@ -70,7 +74,7 @@ Use the LinkedIn website or app as a member:
 - Saved jobs
 - Opening `/jobs/view/…` yourself
 
-That replaces `discover` / `run` as the source of new listings.
+That is how you use LinkedIn itself. New listings from RemoteOK, Himalayas, and EuroTechJobs come from `run` and `discover`, which do not open linkedin.com while the block stays in place.
 
 ### 4. Apply by hand
 
@@ -97,7 +101,7 @@ These are **not** mitigations. They are still the same prohibited class of tool,
 
 ## Safer daily loop
 
-1. In LinkedIn (normal browser): review alerts, open listings, save jobs you care about.
+1. For RemoteOK, Himalayas, and EuroTechJobs, use `run` or `discover`. For LinkedIn, use the normal website: review alerts, open listings, save jobs you care about.
 2. For jobs you want a tailored CV: make sure the description is already in SQLite, or paste it yourself.
 3. Run `python -m jobsearchagent.tailor_cv` for pending `review_queue` rows that have `profile_id` and a stored description.
 4. In the local UI: reject irrelevant rows; keep `#jobs` as a second pass.
@@ -116,4 +120,5 @@ If LinkedIn restricts the account, use LinkedIn’s own help/appeal flow. Do not
 - [Prohibited software and extensions (LinkedIn Help)](https://www.linkedin.com/help/linkedin/answer/a1341387)
 - [README](../../README.md) — local UI, `tailor_cv`, SQLite
 - [Tailored CV guide](./tailored_cv_guide.md)
+- [Multi-site build guide](./multisite_build_guide.md) — enabled rows, and the LinkedIn block
 - [EMEA remote and project IT sources](./emea_remote_job_sources.md)

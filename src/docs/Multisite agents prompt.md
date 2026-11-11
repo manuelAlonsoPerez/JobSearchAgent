@@ -1,5 +1,9 @@
 # Multi-site discovery — planning prompt
 
+> **This brief is closed.** The locked plan and the work order are
+> [`multisite_build_guide.md`](./multisite_build_guide.md). The notes below are the questions we
+> started from. Where they disagree with the build guide, the build guide wins.
+
 > **Role:** Act as my architecture partner. **Don't jump to code.** Help me converge on site selection, a discovery interface, and how `run` walks sites — then we implement incrementally, in the same part-by-part style as `src/docs/v1_build_guide.md`.
 
 ---

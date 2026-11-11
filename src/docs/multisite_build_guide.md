@@ -114,7 +114,7 @@ The first saved row wins. v2 does not merge descriptions.
 
 The enabled rows in `sites.yaml` are `remoteok`, `himalayas`, `eurotechjobs`, and `eurotechjobs-remote`. LinkedIn stays in the file and is listed under `blocked.sites`, so no command opens linkedin.com until that block is removed. The remaining rows are the backlog to turn on one adapter at a time. `enabled: false` rows stay in the file.
 
-### On for the first adapters
+### Enabled now
 
 `remoteok`, `himalayas`, `eurotechjobs`, `eurotechjobs-remote`. LinkedIn is blocked for now.
 
@@ -216,7 +216,7 @@ LinkedIn `run` must still pass its current tests after every part. A part that o
   - `id` values are unique. `adapter` is a non-empty slug.
   - `type: static` must have `supports_query: false`.
   - LinkedIn’s `name` remains `"LinkedIn Jobs"`.
-- **Done when:** a unit test loads the real `sites.yaml`; the enabled ids are `himalayas`, `eurotechjobs`, and `eurotechjobs-remote` (LinkedIn stays in the file and is blocked); a disabled Spain board is absent; a fixture missing `adapter` raises.
+- **Done when:** a unit test loads the real `sites.yaml`; the enabled ids match the [enabled set](#enabled-set) (LinkedIn stays in the file and is blocked); a disabled Spain board is absent; a fixture missing `adapter` raises.
 
 ### ☑ Part M2 — discovery protocol · `CODE`
 

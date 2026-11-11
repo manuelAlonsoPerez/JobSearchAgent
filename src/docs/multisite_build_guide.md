@@ -4,11 +4,11 @@
 > v1 (LinkedIn Easy Apply) stays in [`v1_build_guide.md`](./v1_build_guide.md). This guide does not
 > reopen triage, CV writing, or Easy Apply fill.
 >
-> **Status:** Parts M1–M6 are done. `run` walks Himalayas, EuroTechJobs, and
-> EuroTechJobs Remote. The keyword row searches one token at a time
-> (`ServiceNow developer` → `servicenow`). The remote row opens its category
-> once. LinkedIn stays blocked, so a run does not open linkedin.com. The next
-> work order is one Part M7 adapter, when you name it.
+> **Status:** Parts M1–M6 are done. Part M7 has started with RemoteOK. `run`
+> walks RemoteOK, Himalayas, EuroTechJobs, and EuroTechJobs Remote. RemoteOK
+> reads the developer JSON feed once and drops listings older than `--month`.
+> LinkedIn stays blocked, so a run does not open linkedin.com. The next work
+> order is the next Part M7 adapter, when you name it.
 >
 > **How we use this doc:** each **Part** is one work order. You say *"build Part M3"*; I implement
 > that part only. Tick the box when done.
@@ -112,11 +112,11 @@ The first saved row wins. v2 does not merge descriptions.
 
 ## 📋 Enabled set
 
-The first development set in `sites.yaml` is `himalayas`, `eurotechjobs`, and `eurotechjobs-remote`. LinkedIn stays in the file and is listed under `blocked.sites`, so no command opens linkedin.com until that block is removed. The rows below are the backlog to turn on one adapter at a time. `enabled: false` rows stay in the file.
+The enabled rows in `sites.yaml` are `remoteok`, `himalayas`, `eurotechjobs`, and `eurotechjobs-remote`. LinkedIn stays in the file and is listed under `blocked.sites`, so no command opens linkedin.com until that block is removed. The remaining rows are the backlog to turn on one adapter at a time. `enabled: false` rows stay in the file.
 
 ### On for the first adapters
 
-`himalayas`, `eurotechjobs`, `eurotechjobs-remote`. LinkedIn is blocked for now.
+`remoteok`, `himalayas`, `eurotechjobs`, `eurotechjobs-remote`. LinkedIn is blocked for now.
 
 ### Why each row is in the registry
 
@@ -312,7 +312,7 @@ Build **one adapter per request**, in any order. Each copies M3 (static) or M6 (
 
 | Adapter | Rows | Template |
 | --- | --- | --- |
-| `remoteok` | `remoteok` | M3 |
+| `remoteok` ☑ | `remoteok` | M3 |
 | `remotive` | `remotive-software` only (Spain row stays disabled) | M3 |
 | `himalayas` | `himalayas` | M3 |
 | `justremote` | `justremote` | M3 |

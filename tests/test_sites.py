@@ -18,7 +18,7 @@ class EnabledSiteTests(unittest.TestCase):
 
         self.assertEqual(
             [site.id for site in sites],
-            ["himalayas", "eurotechjobs", "eurotechjobs-remote"],
+            ["remoteok", "himalayas", "eurotechjobs", "eurotechjobs-remote"],
         )
         linkedin = site_by_id("linkedin")
         self.assertEqual(linkedin.name, "LinkedIn Jobs")

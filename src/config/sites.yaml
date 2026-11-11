@@ -5,7 +5,7 @@
 # Target: IT roles that are remote, project/contract, or EMEA.
 # Profiles: ServiceNow, full-stack (React/TS/Python/Node/Java/.NET), AI/RAG/agents.
 #
-# enabled: true  → first multi-site development set: Himalayas and EuroTechJobs.
+# enabled: true  → Himalayas, EuroTechJobs, and RemoteOK.
 # enabled: false → kept in this file for later. The full previous enabled set
 #                  is copied in sites_extended.yaml.
 #
@@ -131,14 +131,14 @@ sites:
     profile: shared
 
   # ── Remote-first developer boards ─────────────────────────────────────
-  # Only Himalayas is on for the first adapters. The others stay listed and
-  # disabled. Global remote listings. JEV still drops geo-locked remote that
-  # excludes Norway / EEA.
+  # RemoteOK and Himalayas are on. The other boards stay listed and disabled.
+  # Global remote listings. JEV still drops geo-locked remote that excludes
+  # Norway / EEA.
   - id: remoteok
     name: "RemoteOK"
     url: "https://remoteok.com/remote-dev-jobs"
     type: static
-    enabled: false
+    enabled: true
     adapter: remoteok
     auth: none
     supports_query: false

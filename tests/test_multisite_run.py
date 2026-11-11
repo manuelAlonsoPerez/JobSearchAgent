@@ -178,6 +178,7 @@ class MultiSiteRunTests(unittest.TestCase):
                 database_path=Path(directory) / "jobs.db",
             )
         text = "\n".join(lines)
+        self.assertIn("remoteok skipped", text)
         self.assertIn("eurotechjobs skipped", text)
         self.assertIn("eurotechjobs-remote skipped", text)
         self.assertEqual(adapter.calls[0][:3], ("himalayas", None, None))

@@ -4,10 +4,11 @@
 > v1 (LinkedIn Easy Apply) stays in [`v1_build_guide.md`](./v1_build_guide.md). This guide does not
 > reopen triage, CV writing, or Easy Apply fill.
 >
-> **Status:** Parts M1–M5 are done. `run` walks each enabled site that has an
-> adapter, skips EuroTechJobs until that adapter exists, and keeps LinkedIn on
-> its current search. LinkedIn stays blocked, so a run does not open
-> linkedin.com. The next work order is Part M6, EuroTechJobs.
+> **Status:** Parts M1–M6 are done. `run` walks Himalayas, EuroTechJobs, and
+> EuroTechJobs Remote. The keyword row searches one token at a time
+> (`ServiceNow developer` → `servicenow`). The remote row opens its category
+> once. LinkedIn stays blocked, so a run does not open linkedin.com. The next
+> work order is one Part M7 adapter, when you name it.
 >
 > **How we use this doc:** each **Part** is one work order. You say *"build Part M3"*; I implement
 > that part only. Tick the box when done.
@@ -294,7 +295,7 @@ LinkedIn `run` must still pass its current tests after every part. A part that o
   - A raising adapter is logged and the next `--site` still runs.
   - `--month 1` on a `posted_within: unsupported` fixture site logs a skip and does not scrape it.
 
-### ☐ Part M6 — EuroTechJobs · `CODE`+`BROWSER`
+### ☑ Part M6 — EuroTechJobs · `CODE`+`BROWSER`
 
 - **Goal:** the search-shaped template for later boards. Covers `eurotechjobs` and `eurotechjobs-remote`.
 - **Depends on:** M5.

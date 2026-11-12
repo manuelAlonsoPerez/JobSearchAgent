@@ -14,7 +14,7 @@ In this repo that means:
 
 | Command / step | Talks to LinkedIn? | Status |
 | --- | --- | --- |
-| `python -m jobsearchagent run` | No, while `linkedin` is in `blocked.sites` and its row is `enabled: false`. It walks RemoteOK, Himalayas, and EuroTechJobs. | Keep for those boards |
+| `python -m jobsearchagent run` | No, while `linkedin` is in `blocked.sites` and its row is `enabled: false`. It walks Himalayas and EuroTechJobs. | Keep for those boards |
 | `python -m jobsearchagent discover` | Same as `run`: enabled sites only, and it refuses before opening linkedin.com. | Keep for those boards |
 | `python -m jobsearchagent.linkedin_agent` | Yes | Stop |
 | `python -m jobsearchagent.discovery.linkedin_smoke` | Yes | Stop |
@@ -74,7 +74,7 @@ Use the LinkedIn website or app as a member:
 - Saved jobs
 - Opening `/jobs/view/…` yourself
 
-That is how you use LinkedIn itself. New listings from RemoteOK, Himalayas, and EuroTechJobs come from `run` and `discover`, which do not open linkedin.com while the block stays in place.
+That is how you use LinkedIn itself. New listings from Himalayas and EuroTechJobs come from `run` and `discover`, which do not open linkedin.com while the block stays in place.
 
 ### 4. Apply by hand
 
@@ -101,7 +101,7 @@ These are **not** mitigations. They are still the same prohibited class of tool,
 
 ## Safer daily loop
 
-1. For RemoteOK, Himalayas, and EuroTechJobs, use `run` or `discover`. For LinkedIn, use the normal website: review alerts, open listings, save jobs you care about.
+1. For Himalayas and EuroTechJobs, use `run` or `discover`. For LinkedIn, use the normal website: review alerts, open listings, save jobs you care about.
 2. For jobs you want a tailored CV: make sure the description is already in SQLite, or paste it yourself.
 3. Run `python -m jobsearchagent.tailor_cv` for pending `review_queue` rows that have `profile_id` and a stored description.
 4. In the local UI: reject irrelevant rows; keep `#jobs` as a second pass.

@@ -10,12 +10,11 @@ Profiles this list is aimed at: ServiceNow, full-stack / frontend, AI / agents. 
 
 | id | Board | How the run reads it |
 | --- | --- | --- |
-| `remoteok` | RemoteOK developer jobs | One JSON feed. Drops listings older than `--month`. |
 | `himalayas` | Himalayas developer jobs | One feed. Keeps Norway, Spain, or worldwide. |
 | `eurotechjobs` | EuroTechJobs keyword search | One token per query (`ServiceNow developer` → `servicenow`). |
 | `eurotechjobs-remote` | EuroTechJobs remote category | The category page once. |
 
-LinkedIn stays blocked. Every other board below is still a page you open yourself. Do not enable its YAML row until that adapter is the Part M7 you asked for.
+LinkedIn stays blocked. RemoteOK stays off because the board is paid. We Work Remotely is the next adapter and is still a page you open yourself. Every other board below is the same until its adapter is the Part M7 you asked for.
 
 ## How to use a board the agent does not read yet
 

@@ -5,7 +5,10 @@
 # Target: IT roles that are remote, project/contract, or EMEA.
 # Profiles: ServiceNow, full-stack (React/TS/Python/Node/Java/.NET), AI/RAG/agents.
 #
-# enabled: true  → Himalayas, EuroTechJobs, and RemoteOK.
+# enabled: true  → Himalayas and EuroTechJobs.
+# RemoteOK stays in the file and is enabled: false. It is a paid board.
+# We Work Remotely (wwr-fullstack, wwr-frontend, wwr-backend) is the next
+# adapter. Those rows stay off until that adapter exists.
 # enabled: false → kept in this file for later. The full previous enabled set
 #                  is copied in sites_extended.yaml.
 #
@@ -131,14 +134,15 @@ sites:
     profile: shared
 
   # ── Remote-first developer boards ─────────────────────────────────────
-  # RemoteOK and Himalayas are on. The other boards stay listed and disabled.
-  # Global remote listings. JEV still drops geo-locked remote that excludes
-  # Norway / EEA.
+  # Himalayas is on. RemoteOK is off because the board is paid. We Work
+  # Remotely is the next adapter and stays disabled until that adapter
+  # exists. Global remote listings. JEV still drops geo-locked remote that
+  # excludes Norway / EEA.
   - id: remoteok
     name: "RemoteOK"
     url: "https://remoteok.com/remote-dev-jobs"
     type: static
-    enabled: true
+    enabled: false
     adapter: remoteok
     auth: none
     supports_query: false

@@ -4,11 +4,11 @@
 > v1 (LinkedIn Easy Apply) stays in [`v1_build_guide.md`](./v1_build_guide.md). This guide does not
 > reopen triage, CV writing, or Easy Apply fill.
 >
-> **Status:** Parts M1–M6 are done. Part M7 has started with RemoteOK. `run`
-> walks RemoteOK, Himalayas, EuroTechJobs, and EuroTechJobs Remote. RemoteOK
-> reads the developer JSON feed once and drops listings older than `--month`.
-> LinkedIn stays blocked, so a run does not open linkedin.com. The next work
-> order is the next Part M7 adapter, when you name it.
+> **Status:** Parts M1–M6 are done. The RemoteOK adapter exists, and that row
+> is off because the board is paid. `run` walks Himalayas, EuroTechJobs, and
+> EuroTechJobs Remote. LinkedIn stays blocked, so a run does not open
+> linkedin.com. The next work order is the We Work Remotely adapter (`wwr`)
+> for `wwr-fullstack`, `wwr-frontend`, and `wwr-backend`.
 >
 > **How we use this doc:** each **Part** is one work order. You say *"build Part M3"*; I implement
 > that part only. Tick the box when done.
@@ -112,18 +112,18 @@ The first saved row wins. v2 does not merge descriptions.
 
 ## 📋 Enabled set
 
-The enabled rows in `sites.yaml` are `remoteok`, `himalayas`, `eurotechjobs`, and `eurotechjobs-remote`. LinkedIn stays in the file and is listed under `blocked.sites`, so no command opens linkedin.com until that block is removed. The remaining rows are the backlog to turn on one adapter at a time. `enabled: false` rows stay in the file.
+The enabled rows in `sites.yaml` are `himalayas`, `eurotechjobs`, and `eurotechjobs-remote`. LinkedIn stays in the file and is listed under `blocked.sites`, so no command opens linkedin.com until that block is removed. RemoteOK stays in the file with `enabled: false` because the board is paid. We Work Remotely is the next adapter. The remaining rows are the backlog to turn on one adapter at a time. `enabled: false` rows stay in the file.
 
 ### Enabled now
 
-`remoteok`, `himalayas`, `eurotechjobs`, `eurotechjobs-remote`. LinkedIn is blocked for now.
+`himalayas`, `eurotechjobs`, `eurotechjobs-remote`. LinkedIn is blocked. RemoteOK is off. We Work Remotely is next and still disabled.
 
 ### Why each row is in the registry
 
 | id | Why it is here | Shape |
 | --- | --- | --- |
 | `linkedin` | Already the v1 path. Do not rename `name: "LinkedIn Jobs"`. | search, login, native month + work type, phrase queries, location |
-| `remoteok` | Remote-only dev index. Static category, no account. | static, post-filter month |
+| `remoteok` | Remote-only dev index. Adapter exists. Row is off: the board is paid. | static, post-filter month |
 | `wwr-fullstack` / `wwr-frontend` / `wwr-backend` | Remote programming categories, one `wwr` adapter. Smaller fit than Himalayas for these profiles. | static, post-filter month |
 | `remotive-software` | Smaller curated remote software list. | static, post-filter month |
 | `himalayas` | **Second site.** Norway-open remote volume for React, TypeScript, full-stack, and frontend. Country list is on the listing. | static, post-filter month |
@@ -312,7 +312,8 @@ Build **one adapter per request**, in any order. Each copies M3 (static) or M6 (
 
 | Adapter | Rows | Template |
 | --- | --- | --- |
-| `remoteok` ☑ | `remoteok` | M3 |
+| `remoteok` ☑ | `remoteok` (row disabled: paid board) | M3 |
+| `wwr` | `wwr-fullstack`, `wwr-frontend`, `wwr-backend` | M3, next |
 | `remotive` | `remotive-software` only (Spain row stays disabled) | M3 |
 | `himalayas` | `himalayas` | M3 |
 | `justremote` | `justremote` | M3 |

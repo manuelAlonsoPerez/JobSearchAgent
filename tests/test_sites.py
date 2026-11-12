@@ -18,7 +18,7 @@ class EnabledSiteTests(unittest.TestCase):
 
         self.assertEqual(
             [site.id for site in sites],
-            ["remoteok", "himalayas", "eurotechjobs", "eurotechjobs-remote"],
+            ["himalayas", "eurotechjobs", "eurotechjobs-remote"],
         )
         linkedin = site_by_id("linkedin")
         self.assertEqual(linkedin.name, "LinkedIn Jobs")
@@ -27,6 +27,12 @@ class EnabledSiteTests(unittest.TestCase):
         self.assertEqual(site_by_id("himalayas").query_style, "phrase")
         self.assertEqual(site_by_id("eurotechjobs").query_style, "token")
         self.assertFalse(site_by_id("himalayas").supports_query)
+        remoteok = site_by_id("remoteok")
+        self.assertFalse(remoteok.enabled)
+        self.assertEqual(remoteok.adapter, "remoteok")
+        for site_id in ("wwr-fullstack", "wwr-frontend", "wwr-backend"):
+            self.assertFalse(site_by_id(site_id).enabled)
+            self.assertEqual(site_by_id(site_id).adapter, "wwr")
 
     def test_linkedin_automation_is_refused_while_blocked(self) -> None:
         with self.assertRaises(RuntimeError) as caught:

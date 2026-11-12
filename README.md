@@ -4,8 +4,9 @@ JobSearchAgent is a local job discovery and triage system. It uses a persistent 
 browser session, local Ollama models, JEV typed decisions, and SQLite persistence.
 
 The main command is `python -m jobsearchagent run`. It walks every `enabled: true` row in
-`src/config/sites.yaml`, triages each new job, and queues it. The rows on today are RemoteOK,
-Himalayas, and EuroTechJobs (keyword search and the remote category). LinkedIn stays in the
+`src/config/sites.yaml`, triages each new job, and queues it. The rows on today are
+Himalayas and EuroTechJobs (keyword search and the remote category). RemoteOK stays
+in the file and is off, because that board is paid. LinkedIn stays in the
 file and in `blocked.sites`, so this command does not open linkedin.com. Easy Apply fill
 remains the LinkedIn path and runs only if that block is removed.
 
@@ -84,8 +85,8 @@ PYTHONPATH=src python -m jobsearchagent run --dry-run --limit 15 --max-jobs 80 -
 ```
 
 The enabled boards do not ask for a login. Locations default to `JOB_LOCATIONS` in `.env`
-(Norway and Remote) and are used only when that row has `supports_location: true`. RemoteOK
-and Himalayas open their category once. EuroTechJobs searches one token at a time
+(Norway and Remote) and are used only when that row has `supports_location: true`. Himalayas
+opens its category once. EuroTechJobs searches one token at a time
 (`ServiceNow developer` becomes `servicenow`) and does not loop locations. Repeat `--location`
 to override the list for one run. Repeat `--site` or `--skip-site` to narrow the enabled set.
 `--limit` is new jobs **per search unit** (default 20). `--max-jobs` optionally caps new jobs
@@ -192,7 +193,7 @@ Standalone (not on `run`): python -m jobsearchagent.tailor_cv
 ### Discovery
 
 `run` and `discover` call `discover_enabled_sites`. Each enabled row uses the adapter named in
-YAML (`remoteok`, `himalayas`, `eurotechjobs`, `linkedin`). A site with no adapter is logged
+YAML (`himalayas`, `eurotechjobs`, `linkedin`). A site with no adapter is logged
 and skipped. One Playwright session covers the run. A failure on one site is logged and the
 next site runs.
 
@@ -295,12 +296,12 @@ Add `--browser` to walk the live Easy Apply form instead of the stored policy.
 Standalone module. Does not open Easy Apply and does not Submit. Source PDFs live in
 `src/docs` and are chosen from each profile’s `source_cvs`:
 
-| Profile                 | Source PDF                                      |
-| ----------------------- | ----------------------------------------------- |
-| `servicenow-developer`  | `Manuel Alonso - Developer ServiceNow.pdf`      |
-| `fullstack-developer`   | `Manuel Alonso - Developer Full stack.pdf`      |
-| `frontend-developer`    | full-stack PDF (same layout, frontend headline) |
-| `ai-developer`          | `Manuel Alonso - Developer AI.pdf`              |
+| Profile                | Source PDF                                      |
+| ---------------------- | ----------------------------------------------- |
+| `servicenow-developer` | `Manuel Alonso - Developer ServiceNow.pdf`      |
+| `fullstack-developer`  | `Manuel Alonso - Developer Full stack.pdf`      |
+| `frontend-developer`   | full-stack PDF (same layout, frontend headline) |
+| `ai-developer`         | `Manuel Alonso - Developer AI.pdf`              |
 
 One offer:
 
@@ -394,13 +395,13 @@ PYTHONPATH=src python scripts/delete_jobs.py --db-path /path/to/jobsearch.db
 Current behavior is this README. The build guides are the work orders. The two prompts are the
 briefs those guides closed.
 
-| Doc | What it is |
-| --- | --- |
-| [`src/docs/multisite_build_guide.md`](src/docs/multisite_build_guide.md) | Current discovery work order. Parts M1–M6 are done. Part M7 is one adapter at a time; RemoteOK is the first. |
-| [`src/docs/v1_build_guide.md`](src/docs/v1_build_guide.md) | LinkedIn Easy Apply work order. It does not describe the current `run`. |
-| [`src/docs/tailored_cv_guide.md`](src/docs/tailored_cv_guide.md) | Standalone CV writer. Not on `run`. |
-| [`src/docs/linkedin_restriction_mitigations.md`](src/docs/linkedin_restriction_mitigations.md) | How to keep Playwright off linkedin.com. |
-| [`src/docs/emea_remote_job_sources.md`](src/docs/emea_remote_job_sources.md) | Board list: which rows `run` reads, and which you still open yourself. |
-| [`src/docs/jev_ollama_agent_guide.md`](src/docs/jev_ollama_agent_guide.md) | How the local JEV decision calls are shaped. |
-| [`src/docs/architechture_prompt.md`](src/docs/architechture_prompt.md) | Original design brief. The two build guides win where they disagree. |
-| [`src/docs/Multisite agents prompt.md`](src/docs/Multisite%20agents%20prompt.md) | Planning brief for multi-site discovery. Closed by the multisite build guide. |
+| Doc                                                                                            | What it is                                                                                                   |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| [`src/docs/multisite_build_guide.md`](src/docs/multisite_build_guide.md)                       | Current discovery work order. Parts M1–M6 are done. Part M7 is one adapter at a time. We Work Remotely is next. RemoteOK is off. |
+| [`src/docs/v1_build_guide.md`](src/docs/v1_build_guide.md)                                     | LinkedIn Easy Apply work order. It does not describe the current `run`.                                      |
+| [`src/docs/tailored_cv_guide.md`](src/docs/tailored_cv_guide.md)                               | Standalone CV writer. Not on `run`.                                                                          |
+| [`src/docs/linkedin_restriction_mitigations.md`](src/docs/linkedin_restriction_mitigations.md) | How to keep Playwright off linkedin.com.                                                                     |
+| [`src/docs/emea_remote_job_sources.md`](src/docs/emea_remote_job_sources.md)                   | Board list: which rows `run` reads, and which you still open yourself.                                       |
+| [`src/docs/jev_ollama_agent_guide.md`](src/docs/jev_ollama_agent_guide.md)                     | How the local JEV decision calls are shaped.                                                                 |
+| [`src/docs/architechture_prompt.md`](src/docs/architechture_prompt.md)                         | Original design brief. The two build guides win where they disagree.                                         |
+| [`src/docs/Multisite agents prompt.md`](src/docs/Multisite%20agents%20prompt.md)               | Planning brief for multi-site discovery. Closed by the multisite build guide.                                |

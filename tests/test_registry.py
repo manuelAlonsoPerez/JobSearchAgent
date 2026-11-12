@@ -75,7 +75,7 @@ class RegistryTests(unittest.TestCase):
         resolved = require_adapters(enabled_sites())
         self.assertEqual(
             set(resolved),
-            {"remoteok", "himalayas", "eurotechjobs", "eurotechjobs-remote"},
+            {"himalayas", "eurotechjobs", "eurotechjobs-remote"},
         )
         self.assertEqual(resolved["eurotechjobs"].id, "eurotechjobs")
         self.assertIs(resolved["eurotechjobs"], resolved["eurotechjobs-remote"])

@@ -2,7 +2,7 @@
 
 Standalone agent. Not wired into `run` / Easy Apply yet. You will test it on its own.
 
-A pending review row that already has `raw_description` and `profile_id` is tailored from SQLite. That includes jobs `run` saved from RemoteOK, Himalayas, or EuroTechJobs. Passing `--url` scrapes LinkedIn only when that text is missing, and that scrape stays refused while LinkedIn is blocked.
+A pending review row that already has `raw_description` and `profile_id` is tailored from SQLite. That includes jobs already stored, and jobs `run` saves from Himalayas or EuroTechJobs. Passing `--url` scrapes LinkedIn only when that text is missing, and that scrape stays refused while LinkedIn is blocked.
 
 Custom, local, free. No Canva MCP, no LightPDF. Duplicate the two Canva layouts in HTML once; every tailored file is a new PDF.
 

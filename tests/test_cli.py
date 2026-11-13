@@ -514,6 +514,7 @@ class SequentialLimitTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             with (
+                patch("jobsearchagent.cli.refuse_linkedin_automation"),
                 patch("jobsearchagent.cli.LinkedInDiscovery", FakeDiscovery),
                 patch("jobsearchagent.cli.browser_session", fake_browser),
             ):

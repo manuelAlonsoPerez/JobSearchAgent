@@ -32,6 +32,30 @@ class ThreadIdTests(unittest.TestCase):
     def test_prefers_source_job_id(self) -> None:
         self.assertEqual(thread_id_for(_seed()), "linkedin:123")
 
+    def test_other_site_keeps_its_own_prefix(self) -> None:
+        thread_id = thread_id_for(
+            {
+                "site_id": "wwr-fullstack",
+                "site": "We Work Remotely Full Stack",
+                "source_job_id": "remote-react-1",
+                "url": "https://weworkremotely.com/remote-jobs/remote-react-1",
+            }
+        )
+        self.assertEqual(thread_id, "wwr-fullstack:remote-react-1")
+        self.assertFalse(thread_id.startswith("linkedin:"))
+
+    def test_other_site_without_source_id_uses_the_canonical_url(self) -> None:
+        thread_id = thread_id_for(
+            {
+                "site": "We Work Remotely Full Stack",
+                "url": "https://weworkremotely.com/remote-jobs/remote-react-1?ref=1",
+            }
+        )
+        self.assertEqual(
+            thread_id,
+            "wwr-fullstack:https://weworkremotely.com/remote-jobs/remote-react-1",
+        )
+
     def test_falls_back_to_canonical_url(self) -> None:
         self.assertEqual(
             thread_id_for(
@@ -74,6 +98,44 @@ class GraphRoutingTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertEqual(result.get("apply_status"), "external")
         self.assertEqual(recorded[0].get("apply_url"), "https://ats.example/9")
+
+    def test_other_site_is_triaged_and_queued_without_easy_apply(self) -> None:
+        calls: list[str] = []
+        forms: list[str] = []
+
+        def triage_fn(state: JobState) -> dict:
+            calls.append(str(state.get("site_id")))
+            return {"outcome": "accept", "profile_id": "frontend-developer", "fit_score": 1.0}
+
+        recorded: list[JobState] = []
+
+        def record_fn(state: JobState, **_kwargs: object) -> dict:
+            recorded.append(dict(state))
+            return {"apply_status": state.get("apply_status")}
+
+        graph = build_graph(
+            checkpointer=InMemorySaver(),
+            triage_fn=triage_fn,
+            record_fn=record_fn,
+            form_fn=lambda state, config=None: forms.append("form") or {},
+            apply_fn=lambda state, config=None: {},
+        )
+        result = graph.invoke(
+            _seed(
+                site="Himalayas",
+                site_id="himalayas",
+                url="https://himalayas.app/companies/example/jobs/frontend-1",
+                source_job_id="frontend-1",
+                easy_apply=False,
+                apply_url="https://boards.example.com/jobs/1",
+            ),
+            {"configurable": {"thread_id": "himalayas:frontend-1"}},
+        )
+        self.assertEqual(calls, ["himalayas"])
+        self.assertEqual(forms, [])
+        self.assertEqual(result.get("apply_status"), "external")
+        self.assertEqual(result.get("apply_url"), "https://boards.example.com/jobs/1")
+        self.assertEqual(recorded[0].get("site"), "Himalayas")
 
     def test_reject_and_needs_confirmation_skip_form(self) -> None:
         forms: list[str] = []

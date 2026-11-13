@@ -258,6 +258,19 @@ class LinkedInDiscovery:
                 continue
             if self._title_is_excluded(str(state.get("title", ""))):
                 continue
+            if seen(
+                SITE,
+                source_job_id,
+                url,
+                site_id="linkedin",
+                apply_url=str(state.get("apply_url") or ""),
+                company=str(state.get("company") or ""),
+                title=str(state.get("title") or ""),
+                location=str(state.get("location") or ""),
+            ):
+                if stats is not None:
+                    stats["duplicate"] = int(stats.get("duplicate") or 0) + 1
+                continue
             upsert_job(state)
             jobs.append(state)
             self.output(
@@ -327,6 +340,9 @@ class LinkedInDiscovery:
     def ensure_login(self, page: Page) -> None:
         """Reuse the persistent login, allowing only manual authentication."""
 
+        from ..config import refuse_linkedin_automation
+
+        refuse_linkedin_automation()
         self._navigate(page, "https://www.linkedin.com/feed/")
         if not self._requires_login(page):
             self.output("LinkedIn persistent profile is already logged in.")
@@ -483,6 +499,7 @@ class LinkedInDiscovery:
             location=fields["location"],
             employment_type=fields["employment_type"],
             site=SITE,
+            site_id="linkedin",
             raw_description=description,
             easy_apply=easy_apply,
             apply_url=apply_url or canonical_url,
@@ -757,6 +774,9 @@ def discover(
 ) -> list[JobState]:
     """Run production LinkedIn discovery with the persistent browser profile."""
 
+    from ..config import refuse_linkedin_automation
+
+    refuse_linkedin_automation()
     discovery = LinkedInDiscovery()
     with session(headless=False) as context:
         page = context.pages[0] if context.pages else context.new_page()

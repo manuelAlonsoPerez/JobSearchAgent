@@ -11,10 +11,12 @@ from typing import Any
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from .config import get_settings
+from .config import get_settings, site_id_for_name
 from .models import JobState
 from .utils.text import (
+    canonical_apply_url,
     canonicalize_url,
+    content_fingerprint,
     extract_linkedin_job_id,
     job_dedup_key,
 )
@@ -71,7 +73,9 @@ def init_db(path: str | Path | None = None) -> None:
                 discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 applied_at TEXT,
-                employment_type TEXT
+                employment_type TEXT,
+                site_id TEXT,
+                content_fingerprint TEXT
             );
 
             CREATE INDEX IF NOT EXISTS jobs_site_source_id
@@ -111,6 +115,25 @@ def init_db(path: str | Path | None = None) -> None:
             connection.execute(
                 "ALTER TABLE jobs ADD COLUMN skills_outcome TEXT"
             )
+        if "site_id" not in columns:
+            connection.execute("ALTER TABLE jobs ADD COLUMN site_id TEXT")
+        if "content_fingerprint" not in columns:
+            connection.execute(
+                "ALTER TABLE jobs ADD COLUMN content_fingerprint TEXT"
+            )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS jobs_content_fingerprint
+                ON jobs(content_fingerprint)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS jobs_site_id_source
+                ON jobs(site_id, source_job_id)
+            """
+        )
+        _backfill_site_ids(connection)
         review_columns = {
             row[1]
             for row in connection.execute("PRAGMA table_info(review_queue)")
@@ -136,29 +159,153 @@ def init_db(path: str | Path | None = None) -> None:
         )
 
 
+def _backfill_site_ids(connection: sqlite3.Connection) -> None:
+    rows = connection.execute(
+        """
+        SELECT dedup_key, site
+        FROM jobs
+        WHERE site_id IS NULL OR site_id = ''
+        """
+    ).fetchall()
+    for row in rows:
+        site_id = site_id_for_name(str(row["site"] or ""))
+        if not site_id:
+            continue
+        connection.execute(
+            "UPDATE jobs SET site_id = ? WHERE dedup_key = ?",
+            (site_id, row["dedup_key"]),
+        )
+
+
+def _job_identity(
+    *,
+    site: str,
+    source_job_id: str,
+    url: str,
+    site_id: str | None,
+    apply_url: str | None,
+    company: str | None,
+    title: str | None,
+    location: str | None,
+) -> dict[str, str]:
+    canonical_url = canonicalize_url(url) if str(url or "").strip() else ""
+    resolved_site_id = str(site_id or "").strip() or site_id_for_name(site) or ""
+    stored_apply = canonical_apply_url(apply_url) or str(apply_url or "").strip()
+    return {
+        "dedup_key": (
+            job_dedup_key(site, canonical_url or url, source_job_id or None)
+            if site and (canonical_url or url)
+            else ""
+        ),
+        "site": site,
+        "site_id": resolved_site_id,
+        "source_job_id": str(source_job_id or "").strip(),
+        "url": canonical_url,
+        "apply_url": canonical_apply_url(apply_url) or "",
+        "stored_apply_url": stored_apply,
+        "content_fingerprint": content_fingerprint(company, title, location) or "",
+    }
+
+
+def _other_row_owns_job(
+    connection: sqlite3.Connection,
+    identity: dict[str, str],
+) -> bool:
+    """True when a different saved row already owns this listing."""
+
+    row = connection.execute(
+        """
+        SELECT 1
+        FROM jobs
+        WHERE dedup_key <> ?
+          AND (
+            (
+                source_job_id <> ''
+                AND source_job_id = ?
+                AND (site = ? OR (? <> '' AND site_id = ?))
+            )
+            OR (? <> '' AND url = ?)
+            OR (? <> '' AND apply_url = ?)
+            OR (? <> '' AND content_fingerprint = ?)
+          )
+        LIMIT 1
+        """,
+        (
+            identity["dedup_key"],
+            identity["source_job_id"],
+            identity["site"],
+            identity["site_id"],
+            identity["site_id"],
+            identity["url"],
+            identity["url"],
+            identity["apply_url"],
+            identity["apply_url"],
+            identity["content_fingerprint"],
+            identity["content_fingerprint"],
+        ),
+    ).fetchone()
+    return row is not None
+
+
 def seen(
     site: str,
     source_job_id: str,
     url: str,
     *,
     path: str | Path | None = None,
+    site_id: str | None = None,
+    apply_url: str | None = None,
+    company: str | None = None,
+    title: str | None = None,
+    location: str | None = None,
 ) -> bool:
-    """Return whether the stable source ID or canonical URL was persisted."""
+    """Return whether this listing was already saved on any board.
+
+    A match is the same source id on one site, the same canonical listing
+    URL, the same absolute apply URL, or the same company, title, and location.
+    """
 
     init_db(path)
-    key = job_dedup_key(site, url, source_job_id or None)
-    canonical_url = canonicalize_url(url)
+    identity = _job_identity(
+        site=site,
+        source_job_id=source_job_id,
+        url=url,
+        site_id=site_id,
+        apply_url=apply_url,
+        company=company,
+        title=title,
+        location=location,
+    )
     with _connection(path) as connection:
         row = connection.execute(
             """
             SELECT 1
             FROM jobs
-            WHERE dedup_key = ?
-               OR (site = ? AND source_job_id <> '' AND source_job_id = ?)
-               OR (site = ? AND url = ?)
+            WHERE (? <> '' AND dedup_key = ?)
+               OR (
+                    source_job_id <> ''
+                    AND source_job_id = ?
+                    AND (site = ? OR (? <> '' AND site_id = ?))
+               )
+               OR (? <> '' AND url = ?)
+               OR (? <> '' AND apply_url = ?)
+               OR (? <> '' AND content_fingerprint = ?)
             LIMIT 1
             """,
-            (key, site, source_job_id, site, canonical_url),
+            (
+                identity["dedup_key"],
+                identity["dedup_key"],
+                identity["source_job_id"],
+                identity["site"],
+                identity["site_id"],
+                identity["site_id"],
+                identity["url"],
+                identity["url"],
+                identity["apply_url"],
+                identity["apply_url"],
+                identity["content_fingerprint"],
+                identity["content_fingerprint"],
+            ),
         ).fetchone()
     return row is not None
 
@@ -175,21 +322,31 @@ def upsert_job(
     source_job_id = str(state.get("source_job_id") or "")
     if not site or not raw_url:
         raise ValueError("A persisted job requires non-empty site and url fields")
-    url = canonicalize_url(raw_url)
 
     init_db(path)
-    key = job_dedup_key(site, url, source_job_id or None)
+    identity = _job_identity(
+        site=site,
+        source_job_id=source_job_id,
+        url=raw_url,
+        site_id=str(state.get("site_id") or "") or None,
+        apply_url=state.get("apply_url"),
+        company=state.get("company"),
+        title=state.get("title"),
+        location=state.get("location"),
+    )
     values: dict[str, Any] = {
-        "dedup_key": key,
-        "site": site,
-        "source_job_id": source_job_id,
-        "url": url,
+        "dedup_key": identity["dedup_key"],
+        "site": identity["site"],
+        "site_id": identity["site_id"] or None,
+        "source_job_id": identity["source_job_id"],
+        "url": identity["url"],
+        "content_fingerprint": identity["content_fingerprint"] or None,
         "title": state.get("title"),
         "company": state.get("company"),
         "location": state.get("location"),
         "raw_description": state.get("raw_description"),
         "easy_apply": int(bool(state.get("easy_apply"))),
-        "apply_url": state.get("apply_url"),
+        "apply_url": identity["stored_apply_url"] or None,
         "profile_id": state.get("profile_id"),
         "outcome": state.get("outcome"),
         "fit_score": state.get("fit_score"),
@@ -203,22 +360,30 @@ def upsert_job(
         ),
     }
     with _connection(path) as connection:
+        if _other_row_owns_job(connection, identity):
+            return
         connection.execute(
             """
             INSERT INTO jobs (
-                dedup_key, site, source_job_id, url, title, company, location,
-                raw_description, easy_apply, apply_url, profile_id, outcome,
-                fit_score, review_reason, apply_status, attempts, applied_at,
-                employment_type, location_eligibility, skills_outcome
+                dedup_key, site, site_id, source_job_id, url, title, company,
+                location, raw_description, easy_apply, apply_url, profile_id,
+                outcome, fit_score, review_reason, apply_status, attempts,
+                applied_at, employment_type, location_eligibility,
+                skills_outcome, content_fingerprint
             ) VALUES (
-                :dedup_key, :site, :source_job_id, :url, :title, :company,
-                :location, :raw_description, :easy_apply, :apply_url,
+                :dedup_key, :site, :site_id, :source_job_id, :url, :title,
+                :company, :location, :raw_description, :easy_apply, :apply_url,
                 :profile_id, :outcome, :fit_score, :review_reason,
                 :apply_status, :attempts,
                 CASE WHEN :apply_status = 'applied' THEN CURRENT_TIMESTAMP END,
-                :employment_type, :location_eligibility, :skills_outcome
+                :employment_type, :location_eligibility, :skills_outcome,
+                :content_fingerprint
             )
             ON CONFLICT(dedup_key) DO UPDATE SET
+                site_id = COALESCE(jobs.site_id, excluded.site_id),
+                content_fingerprint = COALESCE(
+                    excluded.content_fingerprint, jobs.content_fingerprint
+                ),
                 title = excluded.title,
                 company = excluded.company,
                 location = excluded.location,
@@ -310,6 +475,7 @@ def get_job(
     values.pop("discovered_at", None)
     values.pop("updated_at", None)
     values.pop("applied_at", None)
+    values.pop("content_fingerprint", None)
     values["easy_apply"] = bool(values.get("easy_apply"))
     return JobState(**values)
 
@@ -620,6 +786,7 @@ def _job_public_dict(
             values.get("skills_outcome")
         )
     values.pop("non_location_outcome", None)
+    values.pop("content_fingerprint", None)
     if not include_description:
         values.pop("raw_description", None)
         values.pop("location_eligibility", None)

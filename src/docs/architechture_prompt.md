@@ -1,5 +1,10 @@
 # 🤖 Design a Multi-Agent Job-Search System (LangGraph · local / Ollama)
 
+> **This brief is closed.** What was built is in [`v1_build_guide.md`](./v1_build_guide.md)
+> (LinkedIn Easy Apply) and [`multisite_build_guide.md`](./multisite_build_guide.md) (current
+> discovery). `run` walks the enabled rows in `sites.yaml`. LinkedIn is blocked. Apply auto-fill
+> stays LinkedIn Easy Apply. Where this document disagrees with those guides, the guides win.
+
 > **Role:** Act as my architecture partner. **Don't jump to code.** Help me converge on the
 > agent topology, shared state, and persistence first — then we implement incrementally.
 

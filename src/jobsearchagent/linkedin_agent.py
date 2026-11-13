@@ -75,6 +75,9 @@ class LinkedInAgent:
 
         if max_jobs < 1:
             raise ValueError("max_jobs must be at least 1")
+        from .config import refuse_linkedin_automation
+
+        refuse_linkedin_automation()
         base_filters = filters or SearchFilters()
 
         # Location eligibility in triage always follows JOB_LOCATIONS (or an

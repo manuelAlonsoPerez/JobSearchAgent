@@ -1,10 +1,15 @@
 # JobSearchAgent
 
-JobSearchAgent is a local, LinkedIn-focused job discovery and triage system. It uses a persistent
-Playwright browser session, local Ollama models, JEV typed decisions, and SQLite persistence.
+JobSearchAgent is a local job discovery and triage system. It uses a persistent Playwright
+browser session, local Ollama models, JEV typed decisions, and SQLite persistence.
 
-The main command is `python -m jobsearchagent run`: search LinkedIn, triage each new job, fill
-Easy Apply, close without Submit, Save the posting, and queue it for manual apply.
+The main command is `python -m jobsearchagent run`. It walks every enabled row in
+`src/config/sites.yaml`, triages each new job, and queues it. Which rows are on,
+and the work order for the next adapter, is
+[`src/docs/multisite_build_guide.md`](src/docs/multisite_build_guide.md).
+LinkedIn is blocked, so this command does not open linkedin.com. Easy Apply fill
+remains that path and runs only if the block is removed. The LinkedIn Easy Apply
+slice stays in [`src/docs/v1_build_guide.md`](src/docs/v1_build_guide.md).
 
 ## Requirements
 
@@ -12,8 +17,8 @@ Easy Apply, close without Submit, Save the posting, and queue it for manual appl
   `sqlite3` CLI is only needed if you want to inspect the file by hand.
 - **Ollama 0.40.4+** running locally ([ollama.com/download](https://ollama.com/download)), exposing
   the JEV `POST /v1/systemone` endpoint.
-- A LinkedIn account. Login is always completed manually in the browser; credentials are never
-  read or stored.
+- A LinkedIn account only if LinkedIn automation is turned back on. Login stays manual;
+  credentials are never read or stored. The boards enabled today do not ask for an account.
 
 ## Installation
 
@@ -76,18 +81,20 @@ PYTHONPATH=src python -m jobsearchagent run --dry-run --limit 15 --max-jobs 80
 PYTHONPATH=src python -m jobsearchagent run --dry-run --limit 15 --max-jobs 80 --month 1
 ```
 
-On the first run, complete LinkedIn login in the Chromium window when prompted, then return to
-the terminal and press Enter. Locations default to `JOB_LOCATIONS` in `.env` (Norway and Remote).
-Repeat `--location` to override them for one run. Searches run **one after another**. `--limit`
-is new jobs **per query and location** (default 20). `--max-jobs` optionally caps new jobs for
-the whole run; omit it to walk every search. A full yaml run with two locations is dozens of
-LinkedIn searches and can take many hours of JEV. To re-analyze jobs already in the database,
-clear them first (see [Delete stored jobs](#delete-stored-jobs)).
+The enabled boards do not ask for a login. Locations default to `JOB_LOCATIONS` in `.env`
+(Norway and Remote) and are used only when that row has `supports_location: true`. Himalayas
+opens its category once. EuroTechJobs searches one token at a time
+(`ServiceNow developer` becomes `servicenow`) and does not loop locations. Repeat `--location`
+to override the list for one run. Repeat `--site` or `--skip-site` to narrow the enabled set.
+`--limit` is new jobs **per search unit** (default 20). `--max-jobs` optionally caps new jobs
+for the whole run. A full yaml run still means one JEV call per new job and can take hours.
+To re-analyze jobs already in the database, clear them first
+(see [Delete stored jobs](#delete-stored-jobs)).
 
-`--dry-run` fills Easy Apply, closes without Submit, saves the posting, and queues it for
-manual apply. `--easy-apply-only` is the default; `--include-external` also records jobs that
-open an employer ATS URL (those are never filled). Repeat `--query` for a fixed list instead of
-the yaml file.
+`--dry-run` is the default posture for LinkedIn Easy Apply: fill, close without Submit, Save,
+and queue. On every other site the job is triaged and the apply link is queued. Nothing is
+submitted. `--easy-apply-only` and `--include-external` change the LinkedIn search only.
+Repeat `--query` for a fixed list instead of the yaml file.
 
 Search only, without opening Easy Apply:
 
@@ -117,10 +124,21 @@ npm run dev
 
 After `npm run build`, `serve` can also host `frontend/dist` at `http://127.0.0.1:8765`.
 
+`run` and `discover` walk the enabled sites and refuse to open linkedin.com while LinkedIn is
+blocked. `linkedin_agent`, the LinkedIn smoke test, and `tailor_cv` of a URL with no stored
+description still open LinkedIn. To keep the account off that automation, follow
+[`src/docs/linkedin_restriction_mitigations.md`](src/docs/linkedin_restriction_mitigations.md).
+Which other boards are live, and which you still browse by hand:
+[`src/docs/emea_remote_job_sources.md`](src/docs/emea_remote_job_sources.md).
+
 ## Search filters
 
-These flags apply to `run`, `discover`, and `linkedin_agent`. Defaults are remote, Easy Apply,
-posted in the last week, sorted by relevance.
+These flags apply to `run` and `discover`. `--month` and `--work-type` follow the site row:
+`native` or `url` builds the filter into the request, `post_filter` drops older or wrong-type
+rows after the read, and `unsupported` skips that site for the run. A missing date on a
+`post_filter` site is kept. `--geo-id`, `--posted-within`, `--sort`, and `--easy-apply` apply
+only to LinkedIn. The table below is the LinkedIn mapping. `linkedin_agent` still uses that
+mapping and still opens linkedin.com.
 
 | Flag                               | Choices (default)                     | LinkedIn parameter                |
 | ---------------------------------- | ------------------------------------- | --------------------------------- |
@@ -145,12 +163,15 @@ remote scope needs confirmation.
 ## How it works
 
 ```text
-LinkedIn search (one query, or every query in searches.yaml)
+enabled sites in sites.yaml (skip blocked)
+  → one search unit per site, then query, then location, where the row supports them
   → scrape and normalize
   → deduplicate and persist
   → select one work profile
   → JEV: location eligibility + skills outcome
-  → Easy Apply fill → close without Submit → Save → review_queue
+  → LinkedIn Easy Apply, only when that site is unblocked:
+       fill → close without Submit → Save → review_queue
+  → every other accept or needs_confirmation: review_queue with apply_url
   → or record reject / external / failed
 
 Standalone (not on `run`): python -m jobsearchagent.tailor_cv
@@ -161,13 +182,19 @@ Standalone (not on `run`): python -m jobsearchagent.tailor_cv
 ### Configuration and shared state
 
 - `.env`-driven models, browser, database, rate limits, `JOB_LOCATIONS`, and `TAILORED_CV_DIR`.
-- YAML for LinkedIn search URLs (`sites.yaml`), queries (`searches.yaml`), and work profiles.
+- YAML for the site registry (`sites.yaml`), queries (`searches.yaml`), and work profiles.
+  `sites_extended.yaml` is a backup, not an input.
 - Typed `JobState`, form, field-answer, and artifact models.
-- `JOB_LOCATIONS` drives both LinkedIn search locations and JEV location eligibility.
+- `JOB_LOCATIONS` drives JEV location eligibility, and search locations on rows that support them.
 
-### LinkedIn discovery
+### Discovery
 
-`jobsearchagent.discovery.linkedin`:
+`run` and `discover` call `discover_enabled_sites`. One Playwright session covers the
+run. A row with no adapter is logged and skipped. A failure on one site is logged
+and the next site runs. Himalayas and EuroTechJobs are the adapters that collect
+jobs today. The registered `remoteok` adapter stays unused while that row is off.
+
+LinkedIn, when it is allowed again, stays in `jobsearchagent.discovery.linkedin`:
 
 - Reuses a persistent Chromium profile and a manually authenticated LinkedIn session.
 - Searches recent remote LinkedIn jobs by query and configured location.
@@ -197,8 +224,10 @@ jobs, skips rejected and external jobs, and does not call a model for that fixed
 ### Apply graph (G1) and batch runner (G2)
 
 `jobsearchagent.graph` walks one job: triage → requirements → Easy Apply fill → record.
-External, reject, and `needs_confirmation` skip the form. `invoke_job(seed)` uses `SqliteSaver`
-(`thread_id = linkedin:{source_job_id}`) so a stopped thread can resume.
+External, reject, and `needs_confirmation` skip the form. A non-LinkedIn job is triaged and
+then recorded with its apply link. `invoke_job(seed)` uses `SqliteSaver`
+(`thread_id = {site_id}:{source_job_id}`) so a stopped thread can resume. Existing LinkedIn
+threads stay `linkedin:{id}`.
 
 The apply form uploads the existing profile PDF from `src/docs`. A standalone tailored-CV
 agent can rewrite that source toward an offer (see [Tailored CVs](#tailored-cvs)). Cover
@@ -214,11 +243,12 @@ Routing:
 
 ### Persistence
 
-SQLite stores normalized jobs, JEV answers, routing status, and application links. Stable
-LinkedIn IDs deduplicate URL variants. `review_queue` holds uncertain, external, failed, and
-parked-for-manual jobs without blocking later jobs. Each review row has `url`, `reason`,
-`link`, `status` (`pending` / `applied` / `rejected`), and `profile_id` (copied from `jobs`
-when the URLs match).
+SQLite stores normalized jobs, JEV answers, routing status, and application links. A job is
+already seen when the same site and source id match, or the canonical listing URL matches, or
+the canonical apply URL matches, or company + title + location match. The first saved row
+wins. `review_queue` holds uncertain, external, failed, and parked-for-manual jobs without
+blocking later jobs. Each review row has `url`, `reason`, `link`, `status`
+(`pending` / `applied` / `rejected`), and `profile_id` (copied from `jobs` when the URLs match).
 
 ## Other commands
 
@@ -263,12 +293,12 @@ Add `--browser` to walk the live Easy Apply form instead of the stored policy.
 Standalone module. Does not open Easy Apply and does not Submit. Source PDFs live in
 `src/docs` and are chosen from each profile’s `source_cvs`:
 
-| Profile                 | Source PDF                                      |
-| ----------------------- | ----------------------------------------------- |
-| `servicenow-developer`  | `Manuel Alonso - Developer ServiceNow.pdf`      |
-| `fullstack-developer`   | `Manuel Alonso - Developer Full stack.pdf`      |
-| `frontend-developer`    | full-stack PDF (same layout, frontend headline) |
-| `ai-developer`          | `Manuel Alonso - Developer AI.pdf`              |
+| Profile                | Source PDF                                      |
+| ---------------------- | ----------------------------------------------- |
+| `servicenow-developer` | `Manuel Alonso - Developer ServiceNow.pdf`      |
+| `fullstack-developer`  | `Manuel Alonso - Developer Full stack.pdf`      |
+| `frontend-developer`   | full-stack PDF (same layout, frontend headline) |
+| `ai-developer`         | `Manuel Alonso - Developer AI.pdf`              |
 
 One offer:
 
@@ -357,4 +387,18 @@ PYTHONPATH=src python scripts/delete_jobs.py --db-path /path/to/jobsearch.db
 - Cover letters and JEV-scoring of generated artifacts (A5).
 - Wiring `tailor_cv` into `run` / Easy Apply upload.
 
-See `src/docs/v1_build_guide.md` and `src/docs/tailored_cv_guide.md` for remaining phases.
+## Documentation
+
+Current behavior is this README. The build guides are the work orders. The two prompts are the
+briefs those guides closed.
+
+| Doc                                                                                            | What it is                                                                                                   |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| [`src/docs/multisite_build_guide.md`](src/docs/multisite_build_guide.md)                       | Current discovery work order, including which rows are on.                          |
+| [`src/docs/v1_build_guide.md`](src/docs/v1_build_guide.md)                                     | LinkedIn Easy Apply work order. It does not describe the current `run`.             |
+| [`src/docs/tailored_cv_guide.md`](src/docs/tailored_cv_guide.md)                               | Standalone CV writer. Not on `run`.                                                 |
+| [`src/docs/linkedin_restriction_mitigations.md`](src/docs/linkedin_restriction_mitigations.md) | How to keep Playwright off linkedin.com.                                            |
+| [`src/docs/emea_remote_job_sources.md`](src/docs/emea_remote_job_sources.md)                   | Human reading list of boards. The live adapters are named at the top.               |
+| [`src/docs/jev_ollama_agent_guide.md`](src/docs/jev_ollama_agent_guide.md)                     | How the local JEV decision calls are shaped.                                        |
+| [`src/docs/architechture_prompt.md`](src/docs/architechture_prompt.md)                         | Original design brief. The two build guides win where they disagree.                |
+| [`src/docs/Multisite agents prompt.md`](src/docs/Multisite%20agents%20prompt.md)               | Planning brief for multi-site discovery. Closed by the multisite build guide.       |

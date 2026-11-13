@@ -89,6 +89,7 @@ class JobState(TypedDict, total=False):
     location: str
     employment_type: str
     site: str
+    site_id: str
     raw_description: str
     easy_apply: bool
     profile_id: str

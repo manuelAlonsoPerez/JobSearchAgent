@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
+import re
 from collections.abc import Mapping
-from typing import Any
+from pathlib import Path
+from typing import Any, Literal
 from urllib.parse import quote_plus
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -130,6 +131,148 @@ def load_sites() -> dict[str, Any]:
     return _load_yaml("sites.yaml")
 
 
+_ADAPTER_SLUG = re.compile(r"^[a-z][a-z0-9_]*$")
+_REQUIRED_SITE_FIELDS = (
+    "id",
+    "name",
+    "url",
+    "type",
+    "adapter",
+    "auth",
+    "supports_query",
+    "supports_location",
+    "posted_within",
+    "work_type",
+    "profile",
+)
+
+
+class Site(BaseModel):
+    """One row from ``sites.yaml`` that discovery can walk."""
+
+    id: str
+    name: str
+    url: str
+    type: Literal["search", "static"]
+    enabled: bool
+    adapter: str
+    auth: Literal["none", "login"]
+    supports_query: bool
+    supports_location: bool
+    posted_within: Literal["native", "post_filter", "unsupported"]
+    work_type: Literal["native", "url", "post_filter", "unsupported"]
+    profile: Literal["shared", "dedicated"]
+    query_style: Literal["phrase", "token"] = "phrase"
+
+
+def parse_sites(registry: Mapping[str, Any]) -> list[Site]:
+    """Validate every site row. Disabled rows stay in the list."""
+
+    raw = registry.get("sites")
+    if not isinstance(raw, list):
+        raise ValueError("sites.yaml 'sites' must be a list")
+
+    sites: list[Site] = []
+    seen: set[str] = set()
+    for index, row in enumerate(raw):
+        if not isinstance(row, Mapping):
+            raise ValueError(f"Site at index {index} must be a mapping")
+        missing = [field for field in _REQUIRED_SITE_FIELDS if field not in row]
+        if missing:
+            label = row.get("id") or f"index {index}"
+            raise ValueError(f"Site {label} is missing {', '.join(missing)}")
+        try:
+            site = Site.model_validate(dict(row))
+        except ValidationError as exc:
+            label = row.get("id") or f"index {index}"
+            raise ValueError(f"Invalid site {label}: {exc}") from exc
+        if not site.id.strip() or not site.name.strip() or not site.url.strip():
+            raise ValueError(f"Site at index {index} has an empty id, name, or url")
+        if site.id in seen:
+            raise ValueError(f"Duplicate site id: {site.id}")
+        seen.add(site.id)
+        if _ADAPTER_SLUG.fullmatch(site.adapter) is None:
+            raise ValueError(
+                f"Site {site.id} has an invalid adapter slug: {site.adapter!r}"
+            )
+        if site.type == "static" and site.supports_query:
+            raise ValueError(f"Static site {site.id} cannot support queries")
+        if site.id == "linkedin" and site.name != "LinkedIn Jobs":
+            raise ValueError("The linkedin site name must stay 'LinkedIn Jobs'")
+        sites.append(site)
+    return sites
+
+
+def blocked_site_names() -> set[str]:
+    """Return blocked site ids and display names, compared case-insensitively."""
+
+    raw = load_sites().get("blocked") or {}
+    if not isinstance(raw, Mapping):
+        return set()
+    names = raw.get("sites") or []
+    if not isinstance(names, list):
+        return set()
+    return {str(name).strip().casefold() for name in names if str(name).strip()}
+
+
+def site_is_blocked(site: Site) -> bool:
+    """True when the row's id or display name is in ``blocked.sites``."""
+
+    names = blocked_site_names()
+    return site.id.casefold() in names or site.name.casefold() in names
+
+
+def enabled_sites() -> list[Site]:
+    """Return enabled registry rows in file order, skipping blocked sites."""
+
+    return [
+        site
+        for site in parse_sites(load_sites())
+        if site.enabled and not site_is_blocked(site)
+    ]
+
+
+def site_id_for_name(name: str) -> str | None:
+    """Return the registry id for a display name or id, if one exists."""
+
+    needle = name.strip().casefold()
+    if not needle:
+        return None
+    for site in parse_sites(load_sites()):
+        if site.name.casefold() == needle or site.id.casefold() == needle:
+            return site.id
+    return None
+
+
+def site_by_id(site_id: str) -> Site:
+    """Return one registry row, including a disabled or blocked site."""
+
+    needle = site_id.strip()
+    if not needle:
+        raise ValueError("A site id is required")
+    for site in parse_sites(load_sites()):
+        if site.id == needle:
+            return site
+    raise ValueError(f"Unknown site id: {needle}")
+
+
+def refuse_linkedin_automation() -> None:
+    """Stop before any code opens linkedin.com while LinkedIn is blocked.
+
+    The row can stay in the file. Automation starts again only when the id is
+    removed from ``blocked.sites`` and ``enabled`` is true.
+    """
+
+    site = site_by_id("linkedin")
+    if site.enabled and not site_is_blocked(site):
+        return
+    raise RuntimeError(
+        "LinkedIn is blocked in src/config/sites.yaml, so this command "
+        "will not open linkedin.com. To allow it later, remove linkedin "
+        "from blocked.sites and set the linkedin row to enabled: true."
+    )
+
+
 def load_searches() -> dict[str, Any]:
     """Load the v1 search configuration.
 
@@ -208,20 +351,9 @@ def linkedin_search_url(
     placeholders and optionally adds LinkedIn's Easy Apply filter.
     """
 
-    sites = load_sites().get("sites", [])
-    linkedin = next(
-        (
-            site
-            for site in sites
-            if isinstance(site, dict) and site.get("name") == "LinkedIn Jobs"
-        ),
-        None,
-    )
-    if linkedin is None:
-        raise ValueError("sites.yaml has no 'LinkedIn Jobs' entry")
-
-    template = linkedin.get("url")
-    if not isinstance(template, str) or not template:
+    linkedin = site_by_id("linkedin")
+    template = linkedin.url
+    if not template:
         raise ValueError("'LinkedIn Jobs' must define a non-empty URL")
 
     url = template.format(

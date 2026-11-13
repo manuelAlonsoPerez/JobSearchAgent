@@ -98,6 +98,9 @@ def apply_to_job(
         + ("live submit" if not is_dry_run else "save for manual apply")
     )
 
+    from ..config import refuse_linkedin_automation
+
+    refuse_linkedin_automation()
     discovery = LinkedInDiscovery(input_fn=input_fn, output_fn=output_fn)
     form_answers: list[dict[str, Any]] = []
     try:

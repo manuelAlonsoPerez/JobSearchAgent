@@ -78,6 +78,9 @@ def inspect_live_requirements(
 
     from ..discovery.linkedin import LinkedInDiscovery
 
+    from ..config import refuse_linkedin_automation
+
+    refuse_linkedin_automation()
     url = _resolve_job_url(identifier, database_path=database_path)
     discovery = LinkedInDiscovery(output_fn=output_fn)
 

@@ -61,6 +61,51 @@ def canonicalize_url(url: str) -> str:
     )
 
 
+_FINGERPRINT_NOISE = re.compile(r"[^\w\s]", re.UNICODE)
+_UNKNOWN_COMPANY = {"unknown company", "unknown"}
+_UNKNOWN_TITLE = {"unknown title", "unknown"}
+
+
+def canonical_apply_url(url: str | None) -> str | None:
+    """Return a canonical absolute http(s) apply URL, or ``None``."""
+
+    text = str(url or "").strip()
+    if not text:
+        return None
+    parts = urlsplit(text)
+    if parts.scheme.lower() not in {"http", "https"} or not parts.netloc:
+        return None
+    return canonicalize_url(text)
+
+
+def content_fingerprint(
+    company: str | None,
+    title: str | None,
+    location: str | None,
+) -> str | None:
+    """Return a cross-site identity for company, title, and location.
+
+    Punctuation and case are ignored. A missing company or title, or the
+    unknown placeholder, has no fingerprint.
+    """
+
+    company_text = _fingerprint_text(company)
+    title_text = _fingerprint_text(title)
+    if (
+        not company_text
+        or not title_text
+        or company_text in _UNKNOWN_COMPANY
+        or title_text in _UNKNOWN_TITLE
+    ):
+        return None
+    return "|".join((company_text, title_text, _fingerprint_text(location)))
+
+
+def _fingerprint_text(value: str | None) -> str:
+    text = _FINGERPRINT_NOISE.sub(" ", str(value or "").casefold())
+    return _WHITESPACE.sub(" ", text).strip()
+
+
 def job_dedup_key(
     site: str,
     url: str,

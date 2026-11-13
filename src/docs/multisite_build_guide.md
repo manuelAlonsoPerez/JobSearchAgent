@@ -4,11 +4,10 @@
 > v1 (LinkedIn Easy Apply) stays in [`v1_build_guide.md`](./v1_build_guide.md). This guide does not
 > reopen triage, CV writing, or Easy Apply fill.
 >
-> **Status:** Parts M1–M6 are done. The RemoteOK adapter exists, and that row
-> is off because the board is paid. `run` walks Himalayas, EuroTechJobs, and
-> EuroTechJobs Remote. LinkedIn stays blocked, so a run does not open
-> linkedin.com. The next work order is the We Work Remotely adapter (`wwr`)
-> for `wwr-fullstack`, `wwr-frontend`, and `wwr-backend`.
+> **Status:** Parts M1–M6 are done. LinkedIn stays blocked. RemoteOK stays
+> off because the board is paid. `run` walks every other allowed row.
+> Himalayas and EuroTechJobs collect jobs. A row with no adapter yet is
+> logged and skipped. The next adapter to build is We Work Remotely (`wwr`).
 >
 > **How we use this doc:** each **Part** is one work order. You say *"build Part M3"*; I implement
 > that part only. Tick the box when done.
@@ -112,11 +111,7 @@ The first saved row wins. v2 does not merge descriptions.
 
 ## 📋 Enabled set
 
-The enabled rows in `sites.yaml` are `himalayas`, `eurotechjobs`, and `eurotechjobs-remote`. LinkedIn stays in the file and is listed under `blocked.sites`, so no command opens linkedin.com until that block is removed. RemoteOK stays in the file with `enabled: false` because the board is paid. We Work Remotely is the next adapter. The remaining rows are the backlog to turn on one adapter at a time. `enabled: false` rows stay in the file.
-
-### Enabled now
-
-`himalayas`, `eurotechjobs`, `eurotechjobs-remote`. LinkedIn is blocked. RemoteOK is off. We Work Remotely is next and still disabled.
+The rows that are on, off, and skipped are named in the status block at the top of this guide. This section is why each row is in the file.
 
 ### Why each row is in the registry
 

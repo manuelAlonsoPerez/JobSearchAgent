@@ -4,17 +4,15 @@ Where to look for **remote IT** roles that are realistically open from Oslo (EEA
 
 Profiles this list is aimed at: ServiceNow, full-stack / frontend, AI / agents. Markets already in this repo: Norway + truly remote, plus Spain/EU listings in `sites.yaml`.
 
-## What `run` reads today
+## What `run` collects today
 
-[`multisite_build_guide.md`](./multisite_build_guide.md) decides which rows the agent opens. Enabled now:
+The status block in [`multisite_build_guide.md`](./multisite_build_guide.md) is the list of enabled rows. These are the adapters that save jobs:
 
 | id | Board | How the run reads it |
 | --- | --- | --- |
 | `himalayas` | Himalayas developer jobs | One feed. Keeps Norway, Spain, or worldwide. |
-| `eurotechjobs` | EuroTechJobs keyword search | One token per query (`ServiceNow developer` → `servicenow`). |
+| `eurotechjobs` | EuroTechJobs keyword search | One token per query (`ServiceNow developer` → `servicenow`). The default work type keeps a card only when it says remote. |
 | `eurotechjobs-remote` | EuroTechJobs remote category | The category page once. |
-
-LinkedIn stays blocked. RemoteOK stays off because the board is paid. We Work Remotely is the next adapter and is still a page you open yourself. Every other board below is the same until its adapter is the Part M7 you asked for.
 
 ## How to use a board the agent does not read yet
 
@@ -26,7 +24,7 @@ LinkedIn stays blocked. RemoteOK stays off because the board is paid. We Work Re
 
 ## The 15 boards
 
-Ranked for this search: EMEA-reachable IT, then how often they carry **projects / contracts / freelance missions**, then signal-to-noise for ServiceNow / full-stack / AI. Himalayas and EuroTechJobs are already in the enabled set above. The other rows in this table are still manual.
+Ranked for this search: EMEA-reachable IT, then how often they carry **projects / contracts / freelance missions**, then signal-to-noise for ServiceNow / full-stack / AI. Himalayas and EuroTechJobs are collected by `run`. Other boards in this table may already be enabled and still skipped until their adapter exists.
 
 | # | Board | URL | Why it is on the list | Typical work |
 | --- | --- | --- | --- | --- |
@@ -72,19 +70,13 @@ Worth a bookmark once the list above is a habit. They are either country-local, 
 
 Skip as a primary source: Upwork/Fiverr (not EMEA-native, race-to-bottom), generic US remote boards without a Europe filter, and LinkedIn automation (see the restriction guide).
 
-## Boards that stay manual
+## Boards the agent does not read yet
 
-A row stays a page you open yourself until the build guide turns it on. Malt stays off (marketplace login and an apply form this phase does not fill). Spain-only boards stay off. LinkedIn stays blocked: see the restriction guide before any command is pointed at linkedin.com.
-
-For a board the agent does not read yet:
-
-- Browse and apply as a person
-- Paste a description you copied yourself
-- Local `#review` / `#jobs` and `tailor_cv`
+Use the steps above for any board that is not in the collection table. Malt, the Spain-only boards, and LinkedIn stay out of `run`. LinkedIn automation is covered in the restriction guide.
 
 ## Related docs
 
-- [Multi-site build guide](./multisite_build_guide.md) — which rows `run` walks, and the next adapter
+- [Multi-site build guide](./multisite_build_guide.md) — which rows are enabled, and which adapter is next
 - [LinkedIn restriction mitigations](./linkedin_restriction_mitigations.md) — keep Playwright off linkedin.com
 - [README](../../README.md) — `run`, the review UI, and `tailor_cv`
 - `src/config/sites.yaml` — the registry `run` reads. `sites_extended.yaml` is the backup and is not an input.

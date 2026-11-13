@@ -5,18 +5,15 @@
 # Target: IT roles that are remote, project/contract, or EMEA.
 # Profiles: ServiceNow, full-stack (React/TS/Python/Node/Java/.NET), AI/RAG/agents.
 #
-# enabled: true  → Himalayas and EuroTechJobs.
-# RemoteOK stays in the file and is enabled: false. It is a paid board.
-# We Work Remotely (wwr-fullstack, wwr-frontend, wwr-backend) is the next
-# adapter. Those rows stay off until that adapter exists.
-# enabled: false → kept in this file for later. The full previous enabled set
-#                  is copied in sites_extended.yaml.
+# enabled: true  → the allowed v2 set: remote-first, EMEA tech, contract, Norway.
+# enabled: false → LinkedIn (also blocked), RemoteOK (paid), and the
+#                  Spain-only, LATAM, hostile, or low-signal boards.
+#                  sites_extended.yaml is the untouched backup.
 #
-# LinkedIn is in blocked.sites for now. Commands that would open linkedin.com
-# refuse to start, so the account is not automated. Himalayas has the most
-# Norway-open remote jobs for the React / TypeScript / full-stack profiles.
-# EuroTechJobs is the Europe keyword search for ServiceNow, React, full-stack,
-# and Python.
+# LinkedIn is in blocked.sites. Commands that would open linkedin.com refuse
+# to start, so the account is not automated. A row with no adapter yet is
+# still walked: the run logs it and continues. Himalayas and EuroTechJobs
+# are the adapters that collect jobs today.
 #
 # Per-site fields:
 #   id                 stable slug (thread_id / adapter key)
@@ -134,10 +131,9 @@ sites:
     profile: shared
 
   # ── Remote-first developer boards ─────────────────────────────────────
-  # Himalayas is on. RemoteOK is off because the board is paid. We Work
-  # Remotely is the next adapter and stays disabled until that adapter
-  # exists. Global remote listings. JEV still drops geo-locked remote that
-  # excludes Norway / EEA.
+  # These rows are on, except RemoteOK (paid). Rows without an adapter are
+  # logged and skipped until that adapter exists. JEV still drops
+  # geo-locked remote that excludes Norway / EEA.
   - id: remoteok
     name: "RemoteOK"
     url: "https://remoteok.com/remote-dev-jobs"
@@ -155,7 +151,7 @@ sites:
     name: "We Work Remotely Full Stack"
     url: "https://weworkremotely.com/categories/remote-full-stack-programming-jobs"
     type: static
-    enabled: false
+    enabled: true
     adapter: wwr
     auth: none
     supports_query: false
@@ -168,7 +164,7 @@ sites:
     name: "We Work Remotely Front End"
     url: "https://weworkremotely.com/categories/remote-front-end-programming-jobs"
     type: static
-    enabled: false
+    enabled: true
     adapter: wwr
     auth: none
     supports_query: false
@@ -181,7 +177,7 @@ sites:
     name: "We Work Remotely Back End"
     url: "https://weworkremotely.com/categories/remote-back-end-programming-jobs"
     type: static
-    enabled: false
+    enabled: true
     adapter: wwr
     auth: none
     supports_query: false
@@ -194,7 +190,7 @@ sites:
     name: "Remotive Software"
     url: "https://remotive.com/remote-jobs/software-development"
     type: static
-    enabled: false
+    enabled: true
     adapter: remotive
     auth: none
     supports_query: false
@@ -222,7 +218,7 @@ sites:
     name: "JustRemote"
     url: "https://justremote.co/remote-developer-jobs"
     type: static
-    enabled: false
+    enabled: true
     adapter: justremote
     auth: none
     supports_query: false
@@ -235,7 +231,7 @@ sites:
     name: "Working Nomads"
     url: "https://www.workingnomads.com/remote-development-jobs"
     type: static
-    enabled: false
+    enabled: true
     adapter: working_nomads
     auth: none
     supports_query: false
@@ -248,7 +244,7 @@ sites:
     name: "Nodesk"
     url: "https://nodesk.co/remote-jobs/"
     type: static
-    enabled: false
+    enabled: true
     adapter: nodesk
     auth: none
     supports_query: false
@@ -261,7 +257,7 @@ sites:
     name: "Dynamite Jobs"
     url: "https://dynamitejobs.com/remote-development-jobs"
     type: static
-    enabled: false
+    enabled: true
     adapter: dynamite
     auth: none
     supports_query: false
@@ -274,7 +270,7 @@ sites:
     name: "Jobgether"
     url: "https://jobgether.com/remote-jobs/software-engineer"
     type: static
-    enabled: false
+    enabled: true
     adapter: jobgether
     auth: none
     supports_query: false
@@ -287,7 +283,7 @@ sites:
     name: "Startup.jobs"
     url: "https://startup.jobs/?q={query_encoded}&remote=true"
     type: search
-    enabled: false
+    enabled: true
     adapter: startup_jobs
     auth: none
     supports_query: true
@@ -302,7 +298,7 @@ sites:
     name: "EU Remote Jobs"
     url: "https://euremotejobs.com/"
     type: static
-    enabled: false
+    enabled: true
     adapter: eu_remote_jobs
     auth: none
     supports_query: false
@@ -347,7 +343,7 @@ sites:
     name: "Landing.jobs"
     url: "https://landing.jobs/jobs?search={query_encoded}"
     type: search
-    enabled: false
+    enabled: true
     adapter: landing_jobs
     auth: none
     supports_query: true
@@ -362,7 +358,7 @@ sites:
     name: "Welcome to the Jungle"
     url: "https://www.welcometothejungle.com/en/jobs?query={query_encoded}&aroundQuery={location_encoded}"
     type: search
-    enabled: false
+    enabled: true
     adapter: wttj
     auth: none
     supports_query: true
@@ -376,7 +372,7 @@ sites:
     name: "Arbeitnow Remote"
     url: "https://www.arbeitnow.com/jobs/locations/remote"
     type: static
-    enabled: false
+    enabled: true
     adapter: arbeitnow
     auth: none
     supports_query: false
@@ -390,7 +386,7 @@ sites:
     name: "FINN IT"
     url: "https://www.finn.no/job/search?q={query_encoded}&occupation=0.23"
     type: search
-    enabled: false
+    enabled: true
     adapter: finn
     auth: none
     supports_query: true
@@ -404,7 +400,7 @@ sites:
     name: "Arc.dev"
     url: "https://arc.dev/remote-jobs"
     type: static
-    enabled: false
+    enabled: true
     adapter: arc
     auth: none
     supports_query: false
@@ -417,7 +413,7 @@ sites:
     name: "FreelancerMap"
     url: "https://www.freelancermap.com/projects?query={query_encoded}"
     type: search
-    enabled: false
+    enabled: true
     adapter: freelancermap
     auth: none
     supports_query: true
@@ -430,7 +426,7 @@ sites:
     name: "FreelancerMap Remote EU"
     url: "https://www.freelancermap.com/projects/remote-for-eu"
     type: static
-    enabled: false
+    enabled: true
     adapter: freelancermap
     auth: none
     supports_query: false

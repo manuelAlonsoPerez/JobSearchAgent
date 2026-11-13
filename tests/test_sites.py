@@ -18,7 +18,29 @@ class EnabledSiteTests(unittest.TestCase):
 
         self.assertEqual(
             [site.id for site in sites],
-            ["himalayas", "eurotechjobs", "eurotechjobs-remote"],
+            [
+                "wwr-fullstack",
+                "wwr-frontend",
+                "wwr-backend",
+                "remotive-software",
+                "himalayas",
+                "justremote",
+                "working-nomads",
+                "nodesk",
+                "dynamite-jobs",
+                "jobgether",
+                "startup-jobs",
+                "eu-remote-jobs",
+                "eurotechjobs",
+                "eurotechjobs-remote",
+                "landing-jobs",
+                "wttj",
+                "arbeitnow-remote",
+                "finn-it",
+                "arc-dev",
+                "freelancermap",
+                "freelancermap-remote-eu",
+            ],
         )
         linkedin = site_by_id("linkedin")
         self.assertEqual(linkedin.name, "LinkedIn Jobs")
@@ -31,7 +53,7 @@ class EnabledSiteTests(unittest.TestCase):
         self.assertFalse(remoteok.enabled)
         self.assertEqual(remoteok.adapter, "remoteok")
         for site_id in ("wwr-fullstack", "wwr-frontend", "wwr-backend"):
-            self.assertFalse(site_by_id(site_id).enabled)
+            self.assertTrue(site_by_id(site_id).enabled)
             self.assertEqual(site_by_id(site_id).adapter, "wwr")
 
     def test_linkedin_automation_is_refused_while_blocked(self) -> None:

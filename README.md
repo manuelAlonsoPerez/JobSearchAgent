@@ -3,16 +3,13 @@
 JobSearchAgent is a local job discovery and triage system. It uses a persistent Playwright
 browser session, local Ollama models, JEV typed decisions, and SQLite persistence.
 
-The main command is `python -m jobsearchagent run`. It walks every `enabled: true` row in
-`src/config/sites.yaml`, triages each new job, and queues it. The rows on today are
-Himalayas and EuroTechJobs (keyword search and the remote category). RemoteOK stays
-in the file and is off, because that board is paid. LinkedIn stays in the
-file and in `blocked.sites`, so this command does not open linkedin.com. Easy Apply fill
-remains the LinkedIn path and runs only if that block is removed.
-
-The current work order is [`src/docs/multisite_build_guide.md`](src/docs/multisite_build_guide.md).
-The LinkedIn Easy Apply slice stays in
-[`src/docs/v1_build_guide.md`](src/docs/v1_build_guide.md).
+The main command is `python -m jobsearchagent run`. It walks every enabled row in
+`src/config/sites.yaml`, triages each new job, and queues it. Which rows are on,
+and the work order for the next adapter, is
+[`src/docs/multisite_build_guide.md`](src/docs/multisite_build_guide.md).
+LinkedIn is blocked, so this command does not open linkedin.com. Easy Apply fill
+remains that path and runs only if the block is removed. The LinkedIn Easy Apply
+slice stays in [`src/docs/v1_build_guide.md`](src/docs/v1_build_guide.md).
 
 ## Requirements
 
@@ -192,10 +189,10 @@ Standalone (not on `run`): python -m jobsearchagent.tailor_cv
 
 ### Discovery
 
-`run` and `discover` call `discover_enabled_sites`. Each enabled row uses the adapter named in
-YAML (`himalayas`, `eurotechjobs`, `linkedin`). A site with no adapter is logged
-and skipped. One Playwright session covers the run. A failure on one site is logged and the
-next site runs.
+`run` and `discover` call `discover_enabled_sites`. One Playwright session covers the
+run. A row with no adapter is logged and skipped. A failure on one site is logged
+and the next site runs. Himalayas and EuroTechJobs are the adapters that collect
+jobs today. The registered `remoteok` adapter stays unused while that row is off.
 
 LinkedIn, when it is allowed again, stays in `jobsearchagent.discovery.linkedin`:
 
@@ -397,11 +394,11 @@ briefs those guides closed.
 
 | Doc                                                                                            | What it is                                                                                                   |
 | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| [`src/docs/multisite_build_guide.md`](src/docs/multisite_build_guide.md)                       | Current discovery work order. Parts M1–M6 are done. Part M7 is one adapter at a time. We Work Remotely is next. RemoteOK is off. |
-| [`src/docs/v1_build_guide.md`](src/docs/v1_build_guide.md)                                     | LinkedIn Easy Apply work order. It does not describe the current `run`.                                      |
-| [`src/docs/tailored_cv_guide.md`](src/docs/tailored_cv_guide.md)                               | Standalone CV writer. Not on `run`.                                                                          |
-| [`src/docs/linkedin_restriction_mitigations.md`](src/docs/linkedin_restriction_mitigations.md) | How to keep Playwright off linkedin.com.                                                                     |
-| [`src/docs/emea_remote_job_sources.md`](src/docs/emea_remote_job_sources.md)                   | Board list: which rows `run` reads, and which you still open yourself.                                       |
-| [`src/docs/jev_ollama_agent_guide.md`](src/docs/jev_ollama_agent_guide.md)                     | How the local JEV decision calls are shaped.                                                                 |
-| [`src/docs/architechture_prompt.md`](src/docs/architechture_prompt.md)                         | Original design brief. The two build guides win where they disagree.                                         |
-| [`src/docs/Multisite agents prompt.md`](src/docs/Multisite%20agents%20prompt.md)               | Planning brief for multi-site discovery. Closed by the multisite build guide.                                |
+| [`src/docs/multisite_build_guide.md`](src/docs/multisite_build_guide.md)                       | Current discovery work order, including which rows are on.                          |
+| [`src/docs/v1_build_guide.md`](src/docs/v1_build_guide.md)                                     | LinkedIn Easy Apply work order. It does not describe the current `run`.             |
+| [`src/docs/tailored_cv_guide.md`](src/docs/tailored_cv_guide.md)                               | Standalone CV writer. Not on `run`.                                                 |
+| [`src/docs/linkedin_restriction_mitigations.md`](src/docs/linkedin_restriction_mitigations.md) | How to keep Playwright off linkedin.com.                                            |
+| [`src/docs/emea_remote_job_sources.md`](src/docs/emea_remote_job_sources.md)                   | Human reading list of boards. The live adapters are named at the top.               |
+| [`src/docs/jev_ollama_agent_guide.md`](src/docs/jev_ollama_agent_guide.md)                     | How the local JEV decision calls are shaped.                                        |
+| [`src/docs/architechture_prompt.md`](src/docs/architechture_prompt.md)                         | Original design brief. The two build guides win where they disagree.                |
+| [`src/docs/Multisite agents prompt.md`](src/docs/Multisite%20agents%20prompt.md)               | Planning brief for multi-site discovery. Closed by the multisite build guide.       |

@@ -72,13 +72,20 @@ class RegistryTests(unittest.TestCase):
         self.assertIn("not_a_board", str(caught.exception))
 
     def test_enabled_sites_resolve(self) -> None:
-        resolved = require_adapters(enabled_sites())
+        sites = enabled_sites()
+        implemented = [
+            site for site in sites if site.adapter in {"himalayas", "eurotechjobs"}
+        ]
+        resolved = require_adapters(implemented)
         self.assertEqual(
             set(resolved),
             {"himalayas", "eurotechjobs", "eurotechjobs-remote"},
         )
         self.assertEqual(resolved["eurotechjobs"].id, "eurotechjobs")
         self.assertIs(resolved["eurotechjobs"], resolved["eurotechjobs-remote"])
+        with self.assertRaises(RuntimeError) as caught:
+            require_adapters(sites)
+        self.assertIn("wwr-fullstack (adapter wwr)", str(caught.exception))
 
     def test_static_adapter_accepts_a_skipped_query(self) -> None:
         adapter = _StaticAdapter()

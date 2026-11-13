@@ -13,6 +13,10 @@ The status block in [`multisite_build_guide.md`](./multisite_build_guide.md) is 
 | `himalayas` | Himalayas developer jobs | One feed. Keeps Norway, Spain, or worldwide. |
 | `eurotechjobs` | EuroTechJobs keyword search | One token per query (`ServiceNow developer` → `servicenow`). The default work type keeps a card only when it says remote. |
 | `eurotechjobs-remote` | EuroTechJobs remote category | The category page once. |
+| `wwr-fullstack` / `wwr-frontend` / `wwr-backend` | We Work Remotely | The category RSS feed. One adapter, three categories. |
+| `remotive-software` | Remotive software | The public JSON feed. Keeps software, IT, and AI. |
+| `working-nomads` | Working Nomads | The public JSON feed. Keeps the Development category. |
+| `arbeitnow-remote` | Arbeitnow remote | The public JSON feed. Keeps listings marked remote. |
 
 ## How to use a board the agent does not read yet
 
@@ -24,7 +28,7 @@ The status block in [`multisite_build_guide.md`](./multisite_build_guide.md) is 
 
 ## The 15 boards
 
-Ranked for this search: EMEA-reachable IT, then how often they carry **projects / contracts / freelance missions**, then signal-to-noise for ServiceNow / full-stack / AI. Himalayas and EuroTechJobs are collected by `run`. Other boards in this table may already be enabled and still skipped until their adapter exists.
+Ranked for this search: EMEA-reachable IT, then how often they carry **projects / contracts / freelance missions**, then signal-to-noise for ServiceNow / full-stack / AI. The collection table above is what `run` saves. Other boards in this table may already be enabled and still skipped until their adapter exists.
 
 | # | Board | URL | Why it is on the list | Typical work |
 | --- | --- | --- | --- | --- |

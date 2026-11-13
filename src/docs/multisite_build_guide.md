@@ -6,8 +6,9 @@
 >
 > **Status:** Parts M1–M6 are done. LinkedIn stays blocked. RemoteOK stays
 > off because the board is paid. `run` walks every other allowed row.
-> Himalayas and EuroTechJobs collect jobs. A row with no adapter yet is
-> logged and skipped. The next adapter to build is We Work Remotely (`wwr`).
+> Himalayas, EuroTechJobs, We Work Remotely, Remotive, Working Nomads, and
+> Arbeitnow collect jobs. A row with no adapter yet is logged and skipped.
+> The next adapter to build is JustRemote (`justremote`).
 >
 > **How we use this doc:** each **Part** is one work order. You say *"build Part M3"*; I implement
 > that part only. Tick the box when done.
@@ -308,11 +309,11 @@ Build **one adapter per request**, in any order. Each copies M3 (static) or M6 (
 | Adapter | Rows | Template |
 | --- | --- | --- |
 | `remoteok` ☑ | `remoteok` (row disabled: paid board) | M3 |
-| `wwr` | `wwr-fullstack`, `wwr-frontend`, `wwr-backend` | M3, next |
-| `remotive` | `remotive-software` only (Spain row stays disabled) | M3 |
+| `wwr` ☑ | `wwr-fullstack`, `wwr-frontend`, `wwr-backend` | M3 |
+| `remotive` ☑ | `remotive-software` only (Spain row stays disabled) | M3 |
 | `himalayas` | `himalayas` | M3 |
-| `justremote` | `justremote` | M3 |
-| `working_nomads` | `working-nomads` | M3 |
+| `justremote` | `justremote` | M3, next |
+| `working_nomads` ☑ | `working-nomads` | M3 |
 | `nodesk` | `nodesk` | M3 |
 | `dynamite` | `dynamite-jobs` | M3 |
 | `jobgether` | `jobgether` | M3 |
@@ -320,7 +321,7 @@ Build **one adapter per request**, in any order. Each copies M3 (static) or M6 (
 | `startup_jobs` | `startup-jobs` | M6 without location; `query_style: phrase` |
 | `landing_jobs` | `landing-jobs` | M6, phrase |
 | `wttj` | `wttj` | M6, phrase + location |
-| `arbeitnow` | `arbeitnow-remote` | M3 |
+| `arbeitnow` ☑ | `arbeitnow-remote` | M3 |
 | `finn` | `finn-it` | M6, phrase, occupation fixed in the URL |
 | `arc` | `arc-dev` | M3 |
 | `freelancermap` | `freelancermap`, `freelancermap-remote-eu` | M6 + one static row |

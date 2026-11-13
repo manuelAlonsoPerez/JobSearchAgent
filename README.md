@@ -191,8 +191,9 @@ Standalone (not on `run`): python -m jobsearchagent.tailor_cv
 
 `run` and `discover` call `discover_enabled_sites`. One Playwright session covers the
 run. A row with no adapter is logged and skipped. A failure on one site is logged
-and the next site runs. Himalayas and EuroTechJobs are the adapters that collect
-jobs today. The registered `remoteok` adapter stays unused while that row is off.
+and the next site runs. Himalayas, EuroTechJobs, We Work Remotely, Remotive,
+Working Nomads, and Arbeitnow collect jobs today. The registered `remoteok`
+adapter stays unused while that row is off.
 
 LinkedIn, when it is allowed again, stays in `jobsearchagent.discovery.linkedin`:
 

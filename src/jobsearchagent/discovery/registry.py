@@ -11,9 +11,13 @@ from typing import Any, Protocol, TypedDict
 
 from ..config import Site, refuse_linkedin_automation
 from ..models import JobState
+from .arbeitnow import ArbeitnowAdapter
 from .eurotechjobs import EuroTechJobsAdapter
 from .himalayas import HimalayasAdapter
 from .remoteok import RemoteOKAdapter
+from .remotive import RemotiveAdapter
+from .working_nomads import WorkingNomadsAdapter
+from .wwr import WeWorkRemotelyAdapter
 from .linkedin import (
     WORK_TYPE_CODES,
     LinkedInDiscovery,
@@ -184,3 +188,7 @@ register_adapter(LinkedInAdapter())
 register_adapter(HimalayasAdapter())
 register_adapter(EuroTechJobsAdapter())
 register_adapter(RemoteOKAdapter())
+register_adapter(WeWorkRemotelyAdapter())
+register_adapter(RemotiveAdapter())
+register_adapter(WorkingNomadsAdapter())
+register_adapter(ArbeitnowAdapter())

@@ -85,7 +85,7 @@ class RegistryTests(unittest.TestCase):
         self.assertIs(resolved["eurotechjobs"], resolved["eurotechjobs-remote"])
         with self.assertRaises(RuntimeError) as caught:
             require_adapters(sites)
-        self.assertIn("wwr-fullstack (adapter wwr)", str(caught.exception))
+        self.assertIn("justremote (adapter justremote)", str(caught.exception))
 
     def test_static_adapter_accepts_a_skipped_query(self) -> None:
         adapter = _StaticAdapter()
